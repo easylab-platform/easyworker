@@ -29,9 +29,11 @@ upload() { # local-file remote-filename
 }
 
 echo "Publishing ${NAME}@${VERSION} to ${BASE}/pkgs/generic/"
-upload "${DIR}/dist/easyworker-linux-amd64"        "easyworker-linux-amd64"
-upload "${DIR}/dist/easyworker-darwin-amd64"       "easyworker-darwin-amd64"
-upload "${DIR}/dist/easyworker-darwin-arm64"       "easyworker-darwin-arm64"
-upload "${DIR}/dist/easyworker-windows-amd64.exe"  "easyworker-windows-amd64.exe"
+for os in linux windows darwin; do
+  for arch in amd64 arm64; do
+    sfx=""; [ "$os" = "windows" ] && sfx=".exe"
+    upload "${DIR}/dist/easyworker-${os}-${arch}${sfx}" "easyworker-${os}-${arch}${sfx}"
+  done
+done
 echo "Done. Verify with:"
 echo "  curl -H 'Authorization: Bearer ${TOKEN}' ${BASE%/}/pkgs/generic/${NAME}/${VERSION}/easyworker-linux-amd64 -o /tmp/easyworker"
