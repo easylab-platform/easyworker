@@ -1,0 +1,16 @@
+# build artifacts / binaries
+/dist/
+/ewtest
+/worker-bin/
+.last-image
+
+# go
+go.work.sum
+*.db
+*.test
+
+# os / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

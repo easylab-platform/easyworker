@@ -1,0 +1,73 @@
+# easyworker: standalone host-runner deployment in the temp namespace.
+# The same binary/image is also the worker injected into cluster sandboxes
+# (WORKER_PORT=48080 there); this deployment runs it as a long-lived service
+# for integration testing and as the forgejo-runner-style host target.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: easyworker
+  namespace: temp
+  labels:
+    app: easyworker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: easyworker
+  template:
+    metadata:
+      labels:
+        app: easyworker
+    spec:
+      containers:
+        - name: easyworker
+          image: forgejo.develop.10.199.64.20.nip.io/easylab/easyworker:TAG
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: WORKER_PORT
+              value: "8080"
+            - name: WORKER_WORKSPACE
+              value: /workspace
+            # Job history sqlite: emptyDir — everything is ephemeral to the
+            # pod (container restart keeps it; pod recreation wipes it).
+            - name: WORKER_DB
+              value: /data/jobs.db
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            limits: { cpu: "1", memory: 1Gi }
+            requests: { cpu: 100m, memory: 128Mi }
+          volumeMounts:
+            - { mountPath: /data, name: data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: easyworker
+  namespace: temp
+  labels:
+    app: easyworker
+spec:
+  type: ClusterIP
+  selector:
+    app: easyworker
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
