@@ -90,6 +90,35 @@ Env: `WORKER_PORT` (default 8080; cluster sandboxes pin 48080),
 `WORKER_WORKSPACE` (default `~/EasyLab/workspace`, sandboxes use `/workspace`),
 `WORKER_DB` (default `easyworker.db`).
 
+## Auth / exclusive enrollment
+
+The worker is **fail-closed**: it executes nothing until it holds a bearer
+token. Every `WorkerService` RPC requires `Authorization: Bearer <token>`.
+
+Two ways to obtain a token:
+
+- **Managed sandbox** (`WORKER_TOKEN` set by the launcher, per-sandbox unique):
+  the token is pre-authorized at boot; no enrollment.
+- **External / host runner** (no `WORKER_TOKEN`): the worker mints a one-time
+  code at boot, prints it to stdout, and the **first** caller presenting it
+  claims the worker exclusively (`WorkerEnroll.Claim`; a second claim →
+  `AlreadyExists`). The owner can `WorkerEnroll.Unrelease` to revoke the token
+  and return a fresh code.
+
+**Restart persistence (default on).** The enrollment state — the token once
+claimed, or the one-time code while unclaimed — is stored in
+`WORKER_STATE_FILE` (default `<dir(WORKER_DB)>/worker.state`, JSON, mode 0600,
+atomic writes). An already-claimed worker therefore **resumes with the same
+token** after a process/host restart: no re-claim, the controller's stored
+token keeps working. Set `WORKER_STATE_FILE=off` to disable persistence
+(in-memory only). Corrupt state fails safe (treated as unclaimed).
+
+Reusable client (no easylab dependency): `github.com/easylab-platform/easyworker/client`
+(`Enroll` / `Status` / `Release` / `Bearer` / `Dial`), plus the
+`easyworker-enroll` CLI.
+
+Other env: `WORKER_REQUIRE_AUTH=0` disables auth (dev only).
+
 ## Build & deploy (cluster)
 
 `./build-image.sh` builds via the shared buildkitd and pushes to forgejo;

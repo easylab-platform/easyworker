@@ -9,8 +9,11 @@
 //     EXCLUSIVELY. On claim the worker installs a fresh token and permanently
 //     closes the claim face (later claims → ErrAlreadyClaimed).
 //
-// The one-time code is created in memory, never stored on disk, and destroyed
-// on claim. Restarting the worker returns it to Unclaimed with a new code.
+// The enrollment state is persisted to a StateStore (WORKER_STATE_FILE) so an
+// already-claimed worker RESUMES with the SAME token after a process/host
+// restart — no re-claim, and the controller's stored token keeps working. The
+// one-time code itself is only held while unclaimed; claiming overwrites it
+// with the token, releasing puts a fresh code back.
 package auth
 
 import (
@@ -30,6 +33,23 @@ var (
 	ErrRateLimited    = errors.New("too many failed claims; slow down")
 )
 
+// StateStore persists the enrollment state across restarts. It is the
+// (WORKER_STATE_FILE) JSON file. All methods must be safe for concurrent use
+// and must not panic on corrupt input (fail safe → treated as unclaimed).
+type StateStore interface {
+	// LoadToken returns the persisted long-term token (empty when the worker
+	// was never claimed, or the state file is absent/corrupt).
+	LoadToken() (token, ownerID string)
+	// LoadCode returns the persisted one-time code (empty when none).
+	LoadCode() string
+	// SaveToken persists the claimed identity (overwrites any code).
+	SaveToken(token, ownerID string)
+	// SaveCode persists the current one-time code (unclaimed/released).
+	SaveCode(code string)
+	// Clear removes the persisted state.
+	Clear()
+}
+
 // Gate is the worker's auth state machine. It is safe for concurrent use.
 type Gate struct {
 	mu sync.Mutex
@@ -37,11 +57,13 @@ type Gate struct {
 	disabled  bool // WORKER_REQUIRE_AUTH=0 (dev only)
 	bootID    string
 	preauth   bool
+	resumed   bool
 	token     string
 	code      string
 	claimed   bool
 	ownerID   string
 	claimedAt time.Time
+	store     StateStore
 
 	// failed-claim rate limiting (per worker process).
 	failures       int
@@ -59,14 +81,17 @@ type Options struct {
 	Disabled bool
 	// BootID identifies this worker process (surfaced by Status/Info).
 	BootID string
+	// State persists enrollment across restarts (nil = in-memory only).
+	State StateStore
 }
 
-// New builds the gate from Options. When not pre-authorized and not disabled it
-// generates a one-time code; Code() returns it (empty after claim).
+// New builds the gate from Options. Precedence: disabled > pre-authorized >
+// resume from State (persisted token) > mint a fresh one-time code.
 func New(opts Options) (*Gate, error) {
 	g := &Gate{
 		disabled:       opts.Disabled,
 		bootID:         opts.BootID,
+		store:          opts.State,
 		maxFailures:    10,
 		failureLockout: time.Minute,
 	}
@@ -79,16 +104,36 @@ func New(opts Options) (*Gate, error) {
 		g.claimed = true
 		return g, nil
 	}
+	// Resume an already-claimed worker: the SAME token continues to work, so
+	// the controller never needs to re-claim.
+	if g.store != nil {
+		if tok, owner := g.store.LoadToken(); tok != "" {
+			g.token = tok
+			g.ownerID = owner
+			g.claimed = true
+			g.resumed = true
+			return g, nil
+		}
+		// Unclaimed but previously released: reuse the persisted code so the
+		// code delivered by a release stays valid across a restart.
+		if c := g.store.LoadCode(); c != "" {
+			g.code = c
+			return g, nil
+		}
+	}
 	code, err := randomHex(16)
 	if err != nil {
 		return nil, fmt.Errorf("mint enrollment code: %w", err)
 	}
 	g.code = code
+	if g.store != nil {
+		g.store.SaveCode(code)
+	}
 	return g, nil
 }
 
 // Code returns the one-time enrollment code ("" when pre-authorized, disabled,
-// or already claimed).
+// resumed, or already claimed).
 func (g *Gate) Code() string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -97,6 +142,14 @@ func (g *Gate) Code() string {
 
 // Disabled reports whether auth is turned off.
 func (g *Gate) Disabled() bool { return g.disabled }
+
+// Resumed reports whether this process recovered a persisted token at boot
+// (no re-claim needed).
+func (g *Gate) Resumed() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.resumed
+}
 
 // Authorized reports whether the presented bearer token is accepted.
 func (g *Gate) Authorized(bearer string) bool {
@@ -117,6 +170,7 @@ type Status struct {
 	Claimed       bool
 	NeedsCode     bool
 	Preauthorized bool
+	Resumed       bool
 	BootID        string
 }
 
@@ -128,6 +182,7 @@ func (g *Gate) Status() Status {
 		Claimed:       g.disabled || g.claimed,
 		NeedsCode:     !g.disabled && !g.claimed,
 		Preauthorized: g.preauth,
+		Resumed:       g.resumed,
 		BootID:        g.bootID,
 	}
 }
@@ -160,6 +215,9 @@ func (g *Gate) Claim(code, ownerID string) (string, error) {
 	g.ownerID = ownerID
 	g.claimedAt = time.Now()
 	g.code = "" // destroy the one-time code
+	if g.store != nil {
+		g.store.SaveToken(tok, ownerID)
+	}
 	return tok, nil
 }
 
@@ -186,11 +244,15 @@ func (g *Gate) Release(bearer, ownerID string) (string, error) {
 	}
 	g.token = ""
 	g.claimed = false
+	g.resumed = false
 	g.ownerID = ownerID
 	g.claimedAt = time.Time{}
 	g.code = code
 	// Reset the failure budget so the new code starts clean.
 	g.failures = 0
+	if g.store != nil {
+		g.store.SaveCode(code)
+	}
 	return code, nil
 }
 

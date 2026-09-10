@@ -67,11 +67,18 @@ func main() {
 
 	// Fail-closed auth gate: a token must be supplied at boot (managed
 	// sandbox) or claimed once from a startup-minted one-time code (external
-	// sandbox / host runner). WORKER_REQUIRE_AUTH=0 disables it (dev only).
+	// sandbox / host runner). Enrollment state is persisted (WORKER_STATE_FILE)
+	// so an already-claimed worker resumes with the SAME token after a restart
+	// — no re-claim. WORKER_REQUIRE_AUTH=0 disables auth (dev only).
+	var stateStore auth.StateStore
+	if sf := workerStateFile(db); sf != "" {
+		stateStore = auth.NewFileStore(sf)
+	}
 	gate, err := auth.New(auth.Options{
 		PreAuthorizedToken: os.Getenv("WORKER_TOKEN"),
 		Disabled:           os.Getenv("WORKER_REQUIRE_AUTH") == "0",
 		BootID:             svc.BootID(),
+		State:              stateStore,
 	})
 	if err != nil {
 		log.Fatalf("auth: %v", err)
@@ -90,16 +97,14 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// Surface the enrollment code (Unclaimed mode only): stdout + optional
-	// file for launchers that cannot read container logs. The code is an
-	// in-memory secret; it is destroyed once claimed.
-	if code := gate.Code(); code != "" {
-		log.Printf("easyworker UNCLAIMED — enrollment code: %s", code)
-		if f := os.Getenv("WORKER_CODE_FILE"); f != "" {
-			if err := os.WriteFile(f, []byte(code+"\n"), 0o600); err != nil {
-				log.Printf("write WORKER_CODE_FILE %s: %v", f, err)
-			}
-		}
+	// Surface the enrollment state. A RESUMED worker keeps its prior token and
+	// is already claimable/usable; an UNCLAIMED worker prints its one-time code
+	// (stdout) for a launcher to capture.
+	switch {
+	case gate.Resumed():
+		log.Printf("easyworker RESUMED — persisted enrollment (no re-claim needed)")
+	case gate.Code() != "":
+		log.Printf("easyworker UNCLAIMED — enrollment code: %s", gate.Code())
 	}
 
 	// Dual-stack h1 + h2c, mirroring easylab's listener shape so both Connect
@@ -127,6 +132,19 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// workerStateFile resolves the enrollment state file path. Default: alongside
+// the job DB (stable across restarts). WORKER_STATE_FILE overrides it; the
+// special value "off" (or empty) disables persistence.
+func workerStateFile(dbPath string) string {
+	if v, ok := os.LookupEnv("WORKER_STATE_FILE"); ok {
+		if v == "" || v == "off" {
+			return ""
+		}
+		return v
+	}
+	return filepath.Join(filepath.Dir(dbPath), "worker.state")
 }
 
 // defaultWorkspace is per-platform (host mode): ~/EasyLab/workspace.
