@@ -49,6 +49,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// WorkerServiceName is the fully-qualified name of the WorkerService service.
 	WorkerServiceName = "worker.v1.WorkerService"
+	// WorkerEnrollName is the fully-qualified name of the WorkerEnroll service.
+	WorkerEnrollName = "worker.v1.WorkerEnroll"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -81,6 +83,10 @@ const (
 	WorkerServiceFileWriteProcedure = "/worker.v1.WorkerService/FileWrite"
 	// WorkerServiceFileListProcedure is the fully-qualified name of the WorkerService's FileList RPC.
 	WorkerServiceFileListProcedure = "/worker.v1.WorkerService/FileList"
+	// WorkerEnrollStatusProcedure is the fully-qualified name of the WorkerEnroll's Status RPC.
+	WorkerEnrollStatusProcedure = "/worker.v1.WorkerEnroll/Status"
+	// WorkerEnrollClaimProcedure is the fully-qualified name of the WorkerEnroll's Claim RPC.
+	WorkerEnrollClaimProcedure = "/worker.v1.WorkerEnroll/Claim"
 )
 
 // WorkerServiceClient is a client for the worker.v1.WorkerService service.
@@ -411,4 +417,108 @@ func (UnimplementedWorkerServiceHandler) FileWrite(context.Context, *connect.Req
 
 func (UnimplementedWorkerServiceHandler) FileList(context.Context, *connect.Request[v1.FileListRequest]) (*connect.Response[v1.FileListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("worker.v1.WorkerService.FileList is not implemented"))
+}
+
+// WorkerEnrollClient is a client for the worker.v1.WorkerEnroll service.
+type WorkerEnrollClient interface {
+	// Status reports whether the worker still needs claiming (used by a
+	// controller to detect a restarted/unclaimed worker).
+	Status(context.Context, *connect.Request[v1.EnrollStatusRequest]) (*connect.Response[v1.EnrollStatusResponse], error)
+	// Claim consumes the one-time code and installs the worker-issued bearer
+	// token. One winner per worker lifetime; subsequent calls → AlreadyExists.
+	Claim(context.Context, *connect.Request[v1.EnrollClaimRequest]) (*connect.Response[v1.EnrollClaimResponse], error)
+}
+
+// NewWorkerEnrollClient constructs a client for the worker.v1.WorkerEnroll service. By default, it
+// uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
+// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
+// connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewWorkerEnrollClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) WorkerEnrollClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	workerEnrollMethods := v1.File_worker_v1_worker_proto.Services().ByName("WorkerEnroll").Methods()
+	return &workerEnrollClient{
+		status: connect.NewClient[v1.EnrollStatusRequest, v1.EnrollStatusResponse](
+			httpClient,
+			baseURL+WorkerEnrollStatusProcedure,
+			connect.WithSchema(workerEnrollMethods.ByName("Status")),
+			connect.WithClientOptions(opts...),
+		),
+		claim: connect.NewClient[v1.EnrollClaimRequest, v1.EnrollClaimResponse](
+			httpClient,
+			baseURL+WorkerEnrollClaimProcedure,
+			connect.WithSchema(workerEnrollMethods.ByName("Claim")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// workerEnrollClient implements WorkerEnrollClient.
+type workerEnrollClient struct {
+	status *connect.Client[v1.EnrollStatusRequest, v1.EnrollStatusResponse]
+	claim  *connect.Client[v1.EnrollClaimRequest, v1.EnrollClaimResponse]
+}
+
+// Status calls worker.v1.WorkerEnroll.Status.
+func (c *workerEnrollClient) Status(ctx context.Context, req *connect.Request[v1.EnrollStatusRequest]) (*connect.Response[v1.EnrollStatusResponse], error) {
+	return c.status.CallUnary(ctx, req)
+}
+
+// Claim calls worker.v1.WorkerEnroll.Claim.
+func (c *workerEnrollClient) Claim(ctx context.Context, req *connect.Request[v1.EnrollClaimRequest]) (*connect.Response[v1.EnrollClaimResponse], error) {
+	return c.claim.CallUnary(ctx, req)
+}
+
+// WorkerEnrollHandler is an implementation of the worker.v1.WorkerEnroll service.
+type WorkerEnrollHandler interface {
+	// Status reports whether the worker still needs claiming (used by a
+	// controller to detect a restarted/unclaimed worker).
+	Status(context.Context, *connect.Request[v1.EnrollStatusRequest]) (*connect.Response[v1.EnrollStatusResponse], error)
+	// Claim consumes the one-time code and installs the worker-issued bearer
+	// token. One winner per worker lifetime; subsequent calls → AlreadyExists.
+	Claim(context.Context, *connect.Request[v1.EnrollClaimRequest]) (*connect.Response[v1.EnrollClaimResponse], error)
+}
+
+// NewWorkerEnrollHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewWorkerEnrollHandler(svc WorkerEnrollHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	workerEnrollMethods := v1.File_worker_v1_worker_proto.Services().ByName("WorkerEnroll").Methods()
+	workerEnrollStatusHandler := connect.NewUnaryHandler(
+		WorkerEnrollStatusProcedure,
+		svc.Status,
+		connect.WithSchema(workerEnrollMethods.ByName("Status")),
+		connect.WithHandlerOptions(opts...),
+	)
+	workerEnrollClaimHandler := connect.NewUnaryHandler(
+		WorkerEnrollClaimProcedure,
+		svc.Claim,
+		connect.WithSchema(workerEnrollMethods.ByName("Claim")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/worker.v1.WorkerEnroll/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case WorkerEnrollStatusProcedure:
+			workerEnrollStatusHandler.ServeHTTP(w, r)
+		case WorkerEnrollClaimProcedure:
+			workerEnrollClaimHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedWorkerEnrollHandler returns CodeUnimplemented from all methods.
+type UnimplementedWorkerEnrollHandler struct{}
+
+func (UnimplementedWorkerEnrollHandler) Status(context.Context, *connect.Request[v1.EnrollStatusRequest]) (*connect.Response[v1.EnrollStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("worker.v1.WorkerEnroll.Status is not implemented"))
+}
+
+func (UnimplementedWorkerEnrollHandler) Claim(context.Context, *connect.Request[v1.EnrollClaimRequest]) (*connect.Response[v1.EnrollClaimResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("worker.v1.WorkerEnroll.Claim is not implemented"))
 }

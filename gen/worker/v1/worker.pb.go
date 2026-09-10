@@ -1341,6 +1341,214 @@ func (x *FileListResponse) GetFiles() []*FileEntry {
 	return nil
 }
 
+type EnrollStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnrollStatusRequest) Reset() {
+	*x = EnrollStatusRequest{}
+	mi := &file_worker_v1_worker_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnrollStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnrollStatusRequest) ProtoMessage() {}
+
+func (x *EnrollStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_worker_v1_worker_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnrollStatusRequest.ProtoReflect.Descriptor instead.
+func (*EnrollStatusRequest) Descriptor() ([]byte, []int) {
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{24}
+}
+
+type EnrollStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Claimed       bool                   `protobuf:"varint,1,opt,name=claimed,proto3" json:"claimed,omitempty"`                      // a token is installed (preauthorized or claimed)
+	NeedsCode     bool                   `protobuf:"varint,2,opt,name=needs_code,json=needsCode,proto3" json:"needs_code,omitempty"` // true while Unclaimed (no WORKER_TOKEN, not yet claimed)
+	Preauthorized bool                   `protobuf:"varint,3,opt,name=preauthorized,proto3" json:"preauthorized,omitempty"`          // true when WORKER_TOKEN was supplied at boot
+	BootId        string                 `protobuf:"bytes,4,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnrollStatusResponse) Reset() {
+	*x = EnrollStatusResponse{}
+	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnrollStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnrollStatusResponse) ProtoMessage() {}
+
+func (x *EnrollStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnrollStatusResponse.ProtoReflect.Descriptor instead.
+func (*EnrollStatusResponse) Descriptor() ([]byte, []int) {
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *EnrollStatusResponse) GetClaimed() bool {
+	if x != nil {
+		return x.Claimed
+	}
+	return false
+}
+
+func (x *EnrollStatusResponse) GetNeedsCode() bool {
+	if x != nil {
+		return x.NeedsCode
+	}
+	return false
+}
+
+func (x *EnrollStatusResponse) GetPreauthorized() bool {
+	if x != nil {
+		return x.Preauthorized
+	}
+	return false
+}
+
+func (x *EnrollStatusResponse) GetBootId() string {
+	if x != nil {
+		return x.BootId
+	}
+	return ""
+}
+
+type EnrollClaimRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`                      // one-time code printed by the worker at startup
+	OwnerId       string                 `protobuf:"bytes,2,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"` // optional caller identity, recorded for audit
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnrollClaimRequest) Reset() {
+	*x = EnrollClaimRequest{}
+	mi := &file_worker_v1_worker_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnrollClaimRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnrollClaimRequest) ProtoMessage() {}
+
+func (x *EnrollClaimRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_worker_v1_worker_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnrollClaimRequest.ProtoReflect.Descriptor instead.
+func (*EnrollClaimRequest) Descriptor() ([]byte, []int) {
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *EnrollClaimRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *EnrollClaimRequest) GetOwnerId() string {
+	if x != nil {
+		return x.OwnerId
+	}
+	return ""
+}
+
+type EnrollClaimResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Token         string                 `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"` // worker-issued bearer token for WorkerService
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnrollClaimResponse) Reset() {
+	*x = EnrollClaimResponse{}
+	mi := &file_worker_v1_worker_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnrollClaimResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnrollClaimResponse) ProtoMessage() {}
+
+func (x *EnrollClaimResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_worker_v1_worker_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnrollClaimResponse.ProtoReflect.Descriptor instead.
+func (*EnrollClaimResponse) Descriptor() ([]byte, []int) {
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *EnrollClaimResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *EnrollClaimResponse) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
 type WatchJobResponse_Done struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ExitCode      int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
@@ -1352,7 +1560,7 @@ type WatchJobResponse_Done struct {
 
 func (x *WatchJobResponse_Done) Reset() {
 	*x = WatchJobResponse_Done{}
-	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	mi := &file_worker_v1_worker_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1364,7 +1572,7 @@ func (x *WatchJobResponse_Done) String() string {
 func (*WatchJobResponse_Done) ProtoMessage() {}
 
 func (x *WatchJobResponse_Done) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	mi := &file_worker_v1_worker_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1491,7 +1699,20 @@ const file_worker_v1_worker_proto_rawDesc = "" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"U\n" +
 	"\x10FileListResponse\x12\x15\n" +
 	"\x06is_dir\x18\x01 \x01(\bR\x05isDir\x12*\n" +
-	"\x05files\x18\x02 \x03(\v2\x14.worker.v1.FileEntryR\x05files2\xf9\x05\n" +
+	"\x05files\x18\x02 \x03(\v2\x14.worker.v1.FileEntryR\x05files\"\x15\n" +
+	"\x13EnrollStatusRequest\"\x8e\x01\n" +
+	"\x14EnrollStatusResponse\x12\x18\n" +
+	"\aclaimed\x18\x01 \x01(\bR\aclaimed\x12\x1d\n" +
+	"\n" +
+	"needs_code\x18\x02 \x01(\bR\tneedsCode\x12$\n" +
+	"\rpreauthorized\x18\x03 \x01(\bR\rpreauthorized\x12\x17\n" +
+	"\aboot_id\x18\x04 \x01(\tR\x06bootId\"C\n" +
+	"\x12EnrollClaimRequest\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x19\n" +
+	"\bowner_id\x18\x02 \x01(\tR\aownerId\";\n" +
+	"\x13EnrollClaimResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05token\x18\x02 \x01(\tR\x05token2\xf9\x05\n" +
 	"\rWorkerService\x127\n" +
 	"\x04Info\x12\x16.worker.v1.InfoRequest\x1a\x17.worker.v1.InfoResponse\x12@\n" +
 	"\aExecute\x12\x19.worker.v1.ExecuteRequest\x1a\x1a.worker.v1.ExecuteResponse\x12C\n" +
@@ -1503,7 +1724,10 @@ const file_worker_v1_worker_proto_rawDesc = "" +
 	"\aJobKill\x12\x19.worker.v1.JobKillRequest\x1a\x1a.worker.v1.JobKillResponse\x12C\n" +
 	"\bFileRead\x12\x1a.worker.v1.FileReadRequest\x1a\x1b.worker.v1.FileReadResponse\x12F\n" +
 	"\tFileWrite\x12\x1b.worker.v1.FileWriteRequest\x1a\x1c.worker.v1.FileWriteResponse\x12C\n" +
-	"\bFileList\x12\x1a.worker.v1.FileListRequest\x1a\x1b.worker.v1.FileListResponseB?Z=github.com/easylab-platform/easyworker/gen/worker/v1;workerv1b\x06proto3"
+	"\bFileList\x12\x1a.worker.v1.FileListRequest\x1a\x1b.worker.v1.FileListResponse2\xa1\x01\n" +
+	"\fWorkerEnroll\x12I\n" +
+	"\x06Status\x12\x1e.worker.v1.EnrollStatusRequest\x1a\x1f.worker.v1.EnrollStatusResponse\x12F\n" +
+	"\x05Claim\x12\x1d.worker.v1.EnrollClaimRequest\x1a\x1e.worker.v1.EnrollClaimResponseB?Z=github.com/easylab-platform/easyworker/gen/worker/v1;workerv1b\x06proto3"
 
 var (
 	file_worker_v1_worker_proto_rawDescOnce sync.Once
@@ -1517,7 +1741,7 @@ func file_worker_v1_worker_proto_rawDescGZIP() []byte {
 	return file_worker_v1_worker_proto_rawDescData
 }
 
-var file_worker_v1_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_worker_v1_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_worker_v1_worker_proto_goTypes = []any{
 	(*InfoRequest)(nil),           // 0: worker.v1.InfoRequest
 	(*InfoResponse)(nil),          // 1: worker.v1.InfoResponse
@@ -1543,13 +1767,17 @@ var file_worker_v1_worker_proto_goTypes = []any{
 	(*FileEntry)(nil),             // 21: worker.v1.FileEntry
 	(*FileListRequest)(nil),       // 22: worker.v1.FileListRequest
 	(*FileListResponse)(nil),      // 23: worker.v1.FileListResponse
-	nil,                           // 24: worker.v1.ExecuteRequest.EnvEntry
-	(*WatchJobResponse_Done)(nil), // 25: worker.v1.WatchJobResponse.Done
+	(*EnrollStatusRequest)(nil),   // 24: worker.v1.EnrollStatusRequest
+	(*EnrollStatusResponse)(nil),  // 25: worker.v1.EnrollStatusResponse
+	(*EnrollClaimRequest)(nil),    // 26: worker.v1.EnrollClaimRequest
+	(*EnrollClaimResponse)(nil),   // 27: worker.v1.EnrollClaimResponse
+	nil,                           // 28: worker.v1.ExecuteRequest.EnvEntry
+	(*WatchJobResponse_Done)(nil), // 29: worker.v1.WatchJobResponse.Done
 }
 var file_worker_v1_worker_proto_depIdxs = []int32{
-	24, // 0: worker.v1.ExecuteRequest.env:type_name -> worker.v1.ExecuteRequest.EnvEntry
+	28, // 0: worker.v1.ExecuteRequest.env:type_name -> worker.v1.ExecuteRequest.EnvEntry
 	4,  // 1: worker.v1.ListJobsResponse.jobs:type_name -> worker.v1.JobEntry
-	25, // 2: worker.v1.WatchJobResponse.done:type_name -> worker.v1.WatchJobResponse.Done
+	29, // 2: worker.v1.WatchJobResponse.done:type_name -> worker.v1.WatchJobResponse.Done
 	21, // 3: worker.v1.FileListResponse.files:type_name -> worker.v1.FileEntry
 	0,  // 4: worker.v1.WorkerService.Info:input_type -> worker.v1.InfoRequest
 	2,  // 5: worker.v1.WorkerService.Execute:input_type -> worker.v1.ExecuteRequest
@@ -1562,19 +1790,23 @@ var file_worker_v1_worker_proto_depIdxs = []int32{
 	17, // 12: worker.v1.WorkerService.FileRead:input_type -> worker.v1.FileReadRequest
 	19, // 13: worker.v1.WorkerService.FileWrite:input_type -> worker.v1.FileWriteRequest
 	22, // 14: worker.v1.WorkerService.FileList:input_type -> worker.v1.FileListRequest
-	1,  // 15: worker.v1.WorkerService.Info:output_type -> worker.v1.InfoResponse
-	3,  // 16: worker.v1.WorkerService.Execute:output_type -> worker.v1.ExecuteResponse
-	6,  // 17: worker.v1.WorkerService.ListJobs:output_type -> worker.v1.ListJobsResponse
-	8,  // 18: worker.v1.WorkerService.WatchJob:output_type -> worker.v1.WatchJobResponse
-	10, // 19: worker.v1.WorkerService.JobOutput:output_type -> worker.v1.JobOutputResponse
-	12, // 20: worker.v1.WorkerService.JobWait:output_type -> worker.v1.JobWaitResponse
-	14, // 21: worker.v1.WorkerService.JobStdin:output_type -> worker.v1.JobStdinResponse
-	16, // 22: worker.v1.WorkerService.JobKill:output_type -> worker.v1.JobKillResponse
-	18, // 23: worker.v1.WorkerService.FileRead:output_type -> worker.v1.FileReadResponse
-	20, // 24: worker.v1.WorkerService.FileWrite:output_type -> worker.v1.FileWriteResponse
-	23, // 25: worker.v1.WorkerService.FileList:output_type -> worker.v1.FileListResponse
-	15, // [15:26] is the sub-list for method output_type
-	4,  // [4:15] is the sub-list for method input_type
+	24, // 15: worker.v1.WorkerEnroll.Status:input_type -> worker.v1.EnrollStatusRequest
+	26, // 16: worker.v1.WorkerEnroll.Claim:input_type -> worker.v1.EnrollClaimRequest
+	1,  // 17: worker.v1.WorkerService.Info:output_type -> worker.v1.InfoResponse
+	3,  // 18: worker.v1.WorkerService.Execute:output_type -> worker.v1.ExecuteResponse
+	6,  // 19: worker.v1.WorkerService.ListJobs:output_type -> worker.v1.ListJobsResponse
+	8,  // 20: worker.v1.WorkerService.WatchJob:output_type -> worker.v1.WatchJobResponse
+	10, // 21: worker.v1.WorkerService.JobOutput:output_type -> worker.v1.JobOutputResponse
+	12, // 22: worker.v1.WorkerService.JobWait:output_type -> worker.v1.JobWaitResponse
+	14, // 23: worker.v1.WorkerService.JobStdin:output_type -> worker.v1.JobStdinResponse
+	16, // 24: worker.v1.WorkerService.JobKill:output_type -> worker.v1.JobKillResponse
+	18, // 25: worker.v1.WorkerService.FileRead:output_type -> worker.v1.FileReadResponse
+	20, // 26: worker.v1.WorkerService.FileWrite:output_type -> worker.v1.FileWriteResponse
+	23, // 27: worker.v1.WorkerService.FileList:output_type -> worker.v1.FileListResponse
+	25, // 28: worker.v1.WorkerEnroll.Status:output_type -> worker.v1.EnrollStatusResponse
+	27, // 29: worker.v1.WorkerEnroll.Claim:output_type -> worker.v1.EnrollClaimResponse
+	17, // [17:30] is the sub-list for method output_type
+	4,  // [4:17] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -1595,9 +1827,9 @@ func file_worker_v1_worker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_worker_v1_worker_proto_rawDesc), len(file_worker_v1_worker_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   26,
+			NumMessages:   30,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_worker_v1_worker_proto_goTypes,
 		DependencyIndexes: file_worker_v1_worker_proto_depIdxs,

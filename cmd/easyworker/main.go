@@ -22,6 +22,7 @@ import (
 	"connectrpc.com/connect"
 	workerv1connect "github.com/easylab-platform/easyworker/gen/worker/v1/workerv1connect"
 	"github.com/easylab-platform/easyworker/internal"
+	"github.com/easylab-platform/easyworker/internal/auth"
 	"github.com/easylab-platform/easyworker/internal/filesvc"
 	"github.com/easylab-platform/easyworker/internal/jobsvc"
 	"github.com/easylab-platform/easyworker/internal/shellh"
@@ -64,13 +65,42 @@ func main() {
 	files := filesvc.New(ws)
 	svc := internal.NewService(jobs, files, runner)
 
+	// Fail-closed auth gate: a token must be supplied at boot (managed
+	// sandbox) or claimed once from a startup-minted one-time code (external
+	// sandbox / host runner). WORKER_REQUIRE_AUTH=0 disables it (dev only).
+	gate, err := auth.New(auth.Options{
+		PreAuthorizedToken: os.Getenv("WORKER_TOKEN"),
+		Disabled:           os.Getenv("WORKER_REQUIRE_AUTH") == "0",
+		BootID:             svc.BootID(),
+	})
+	if err != nil {
+		log.Fatalf("auth: %v", err)
+	}
+	enroll := internal.NewEnrollService(gate)
+
 	mux := http.NewServeMux()
-	mux.Handle(workerv1connect.NewWorkerServiceHandler(svc))
+	// WorkerService is bearer-gated; WorkerEnroll is mounted unprotected (it
+	// closes itself after the single successful claim).
+	mux.Handle(workerv1connect.NewWorkerServiceHandler(svc,
+		connect.WithInterceptors(auth.NewInterceptor(gate))))
+	mux.Handle(workerv1connect.NewWorkerEnrollHandler(enroll))
 	// Plain health endpoint for probes (Connect has its own but a 200 GET /
 	// is the cheapest readiness signal).
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	// Surface the enrollment code (Unclaimed mode only): stdout + optional
+	// file for launchers that cannot read container logs. The code is an
+	// in-memory secret; it is destroyed once claimed.
+	if code := gate.Code(); code != "" {
+		log.Printf("easyworker UNCLAIMED — enrollment code: %s", code)
+		if f := os.Getenv("WORKER_CODE_FILE"); f != "" {
+			if err := os.WriteFile(f, []byte(code+"\n"), 0o600); err != nil {
+				log.Printf("write WORKER_CODE_FILE %s: %v", f, err)
+			}
+		}
+	}
 
 	// Dual-stack h1 + h2c, mirroring easylab's listener shape so both Connect
 	// over h1 (browsers/curl) and h2c-prior-knowledge clients work.

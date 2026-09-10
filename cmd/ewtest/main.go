@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/easylab-platform/easyworker/client"
 	workerv1 "github.com/easylab-platform/easyworker/gen/worker/v1"
 	workerv1connect "github.com/easylab-platform/easyworker/gen/worker/v1/workerv1connect"
 )
@@ -31,10 +32,29 @@ func check(name string, ok bool, detail string) {
 
 func main() {
 	addr := flag.String("addr", "http://127.0.0.1:8080", "worker base URL")
+	token := flag.String("token", "", "bearer token (default $WORKER_TOKEN)")
+	code := flag.String("code", "", "one-time enrollment code (claims an unclaimed worker)")
 	flag.Parse()
 
-	c := workerv1connect.NewWorkerServiceClient(&http.Client{Timeout: 65 * time.Second}, *addr)
+	tok := *token
+	if tok == "" {
+		tok = os.Getenv("WORKER_TOKEN")
+	}
 	ctx := context.Background()
+	if *code != "" {
+		// Claim the worker first (exclusive), then use the issued token.
+		t, err := client.Enroll(ctx, *addr, *code, "ewtest")
+		if err != nil {
+			fmt.Printf("FATAL enroll: %v\n", err)
+			os.Exit(1)
+		}
+		tok = t
+	}
+	opts := []connect.ClientOption{}
+	if tok != "" {
+		opts = append(opts, client.Bearer(tok))
+	}
+	c := workerv1connect.NewWorkerServiceClient(&http.Client{Timeout: 65 * time.Second}, *addr, opts...)
 
 	// ---- Info ----
 	info, err := c.Info(ctx, connect.NewRequest(&workerv1.InfoRequest{}))

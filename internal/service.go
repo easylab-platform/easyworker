@@ -271,3 +271,7 @@ func (s *WorkerService) FileList(ctx context.Context, req *connect.Request[worke
 	}
 	return connect.NewResponse(&workerv1.FileListResponse{IsDir: isDir, Files: out}), nil
 }
+
+// BootID exposes this worker process's boot id (surfaced by Info; used as the
+// enrollment gate's identity).
+func (s *WorkerService) BootID() string { return s.bootID }

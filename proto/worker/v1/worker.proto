@@ -151,3 +151,45 @@ service WorkerService {
   rpc FileWrite(FileWriteRequest) returns (FileWriteResponse);
   rpc FileList(FileListRequest) returns (FileListResponse);
 }
+
+// ---- exclusive enrollment ----
+//
+// A worker is fail-closed: until it has a bearer token it executes nothing.
+// Two ways to obtain one:
+//
+//   1. PreAuthorized — the launcher sets WORKER_TOKEN in the container/host
+//      env (per-sandbox unique). No claim happens; the enroll face never
+//      opens. This is the easyLab-managed sandbox path.
+//   2. Unclaimed — no WORKER_TOKEN: the worker mints a one-time code at boot
+//      and prints it to stdout. The first caller presenting that code claims
+//      the worker EXCLUSIVELY; the worker then issues a token and permanently
+//      closes the enroll face (a second claim → AlreadyExists). This is the
+//      externally-registered sandbox / host runner path (2B).
+//
+// The one-time code is never baked into an image and is destroyed on claim.
+// Restarting the worker returns it to Unclaimed with a fresh code.
+service WorkerEnroll {
+  // Status reports whether the worker still needs claiming (used by a
+  // controller to detect a restarted/unclaimed worker).
+  rpc Status(EnrollStatusRequest) returns (EnrollStatusResponse);
+  // Claim consumes the one-time code and installs the worker-issued bearer
+  // token. One winner per worker lifetime; subsequent calls → AlreadyExists.
+  rpc Claim(EnrollClaimRequest) returns (EnrollClaimResponse);
+}
+
+message EnrollStatusRequest {}
+message EnrollStatusResponse {
+  bool claimed = 1;     // a token is installed (preauthorized or claimed)
+  bool needs_code = 2;  // true while Unclaimed (no WORKER_TOKEN, not yet claimed)
+  bool preauthorized = 3; // true when WORKER_TOKEN was supplied at boot
+  string boot_id = 4;
+}
+
+message EnrollClaimRequest {
+  string code = 1;     // one-time code printed by the worker at startup
+  string owner_id = 2; // optional caller identity, recorded for audit
+}
+message EnrollClaimResponse {
+  bool ok = 1;
+  string token = 2; // worker-issued bearer token for WorkerService
+}
