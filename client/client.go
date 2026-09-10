@@ -59,16 +59,38 @@ func Status(ctx context.Context, baseURL string) (*workerv1.EnrollStatusResponse
 }
 
 // Bearer returns a connect.ClientOption that attaches `Authorization: Bearer
-// <token>` to every request.
+// <token>` to every request — unary AND streaming. The streaming side is
+// essential: connect.UnaryInterceptorFunc is a no-op for streams, so a
+// unary-only interceptor would leave server-streaming RPCs (WatchJob)
+// unauthenticated against the worker's fail-closed gate.
 func Bearer(token string) connect.ClientOption {
-	return connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			if token != "" {
-				req.Header().Set("Authorization", "Bearer "+token)
-			}
-			return next(ctx, req)
+	return connect.WithInterceptors(bearerInterceptor{token: token})
+}
+
+type bearerInterceptor struct{ token string }
+
+func (b bearerInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		if b.token != "" {
+			req.Header().Set("Authorization", "Bearer "+b.token)
 		}
-	}))
+		return next(ctx, req)
+	}
+}
+
+func (b bearerInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		if b.token != "" {
+			conn.RequestHeader().Set("Authorization", "Bearer "+b.token)
+		}
+		return conn
+	}
+}
+
+// Server-side methods are no-ops: this client only originates calls.
+func (b bearerInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
 }
 
 // Dial builds a bearer-authenticated WorkerService client.

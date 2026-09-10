@@ -76,3 +76,43 @@ func TestEnrollThenDial(t *testing.T) {
 		t.Fatalf("second enroll err = %v, want ErrAlreadyClaimed", err)
 	}
 }
+
+// TestStreamingCarriesBearer guards the regression where a unary-only bearer
+// interceptor left server-streaming RPCs unauthenticated (WatchJob 401).
+func TestStreamingCarriesBearer(t *testing.T) {
+	srv, gate := newServer(t)
+	ctx := context.Background()
+	tok, err := Enroll(ctx, srv.URL, gate.Code(), "svc")
+	if err != nil {
+		t.Fatalf("enroll: %v", err)
+	}
+	cli := Dial(srv.URL, tok)
+
+	// Start a short job, then consume the server stream — this exercises
+	// WrapStreamingClient; an unauthenticated stream would fail immediately.
+	res, err := cli.Execute(ctx, connect.NewRequest(&workerv1.ExecuteRequest{Command: "echo streaming-ok"}))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	stream, err := cli.WatchJob(ctx, connect.NewRequest(&workerv1.WatchJobRequest{JobId: res.Msg.JobId}))
+	if err != nil {
+		t.Fatalf("watch open: %v", err)
+	}
+	var got string
+	var done bool
+	for stream.Receive() {
+		switch ev := stream.Msg().Event.(type) {
+		case *workerv1.WatchJobResponse_Output:
+			got += ev.Output
+		case *workerv1.WatchJobResponse_Done_:
+			done = true
+		}
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatalf("watch stream err (auth must be stripped for streams?): %v", err)
+	}
+	if !done {
+		t.Fatal("stream did not terminate with Done")
+	}
+	_ = got
+}
