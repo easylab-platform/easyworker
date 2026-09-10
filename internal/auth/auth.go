@@ -163,6 +163,37 @@ func (g *Gate) Claim(code, ownerID string) (string, error) {
 	return tok, nil
 }
 
+// ErrReleaseForbidden is returned when release is not permitted (a
+// pre-authorized worker or an invalid token).
+var ErrReleaseForbidden = errors.New("worker release forbidden")
+
+// Release revokes the current token and returns the worker to Unclaimed with a
+// fresh one-time code. It requires the CURRENT bearer token, so only the
+// present owner can release — after which any caller with the new code may
+// claim it. Pre-authorized (managed) workers cannot be released.
+func (g *Gate) Release(bearer, ownerID string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.disabled || g.preauth || !g.claimed {
+		return "", ErrReleaseForbidden
+	}
+	if !constantEqual(g.token, bearer) {
+		return "", ErrReleaseForbidden
+	}
+	code, err := randomHex(16)
+	if err != nil {
+		return "", fmt.Errorf("mint code: %w", err)
+	}
+	g.token = ""
+	g.claimed = false
+	g.ownerID = ownerID
+	g.claimedAt = time.Time{}
+	g.code = code
+	// Reset the failure budget so the new code starts clean.
+	g.failures = 0
+	return code, nil
+}
+
 // allowAttemptLocked enforces the failure rate limit.
 func (g *Gate) allowAttemptLocked() bool {
 	now := time.Now()

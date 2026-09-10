@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	workerv1 "github.com/easylab-platform/easyworker/gen/worker/v1"
@@ -90,4 +91,21 @@ func trimSlash(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// Release revokes the worker's current token (must equal bearer) and returns a
+// fresh one-time code, putting the worker back into the claimable state. Only
+// a claimed-by-code worker can be released (managed/pre-authorized cannot).
+func Release(ctx context.Context, baseURL, bearer, ownerID string) (string, error) {
+	hc := &http.Client{Timeout: 15 * time.Second}
+	opts := []connect.ClientOption{}
+	if bearer != "" {
+		opts = append(opts, Bearer(bearer))
+	}
+	res, err := workerv1connect.NewWorkerEnrollClient(hc, trimSlash(baseURL), opts...).
+		Unrelease(ctx, connect.NewRequest(&workerv1.EnrollUnreleaseRequest{OwnerId: ownerID}))
+	if err != nil {
+		return "", err
+	}
+	return res.Msg.GetCode(), nil
 }

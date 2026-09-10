@@ -42,3 +42,23 @@ func (s *EnrollService) Claim(ctx context.Context, req *connect.Request[workerv1
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 }
+
+// Unrelease revokes the caller's token (verified from the Authorization
+// header) and returns a fresh one-time code, putting the worker back into the
+// claimable Unclaimed state for any caller.
+func (s *EnrollService) Unrelease(ctx context.Context, req *connect.Request[workerv1.EnrollUnreleaseRequest]) (*connect.Response[workerv1.EnrollUnreleaseResponse], error) {
+	bearer := bearerOf(req.Header().Get("Authorization"))
+	code, err := s.gate.Release(bearer, req.Msg.OwnerId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, err)
+	}
+	return connect.NewResponse(&workerv1.EnrollUnreleaseResponse{Ok: true, Code: code}), nil
+}
+
+func bearerOf(header string) string {
+	const p = "Bearer "
+	if len(header) > len(p) && header[:len(p)] == p {
+		return header[len(p):]
+	}
+	return ""
+}

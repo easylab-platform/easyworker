@@ -175,6 +175,12 @@ service WorkerEnroll {
   // Claim consumes the one-time code and installs the worker-issued bearer
   // token. One winner per worker lifetime; subsequent calls → AlreadyExists.
   rpc Claim(EnrollClaimRequest) returns (EnrollClaimResponse);
+  // Unrelease revokes the current token and returns the worker to Unclaimed
+  // with a FRESH one-time code. The released worker can then be claimed again
+  // by any caller holding the new code. Requires the CURRENT bearer token
+  // (only the current owner may release); pre-authorized (managed) workers
+  // cannot be released.
+  rpc Unrelease(EnrollUnreleaseRequest) returns (EnrollUnreleaseResponse);
 }
 
 message EnrollStatusRequest {}
@@ -192,4 +198,14 @@ message EnrollClaimRequest {
 message EnrollClaimResponse {
   bool ok = 1;
   string token = 2; // worker-issued bearer token for WorkerService
+}
+
+message EnrollUnreleaseRequest {
+  // owner_id identifies the releasing caller (audit). The caller must also
+  // present the current bearer token (the worker verifies it).
+  string owner_id = 1;
+}
+message EnrollUnreleaseResponse {
+  bool ok = 1;
+  string code = 2; // fresh one-time code (empty for pre-authorized workers)
 }

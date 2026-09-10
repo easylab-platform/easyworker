@@ -109,3 +109,39 @@ func TestTokensAreUnique(t *testing.T) {
 		seen[c] = true
 	}
 }
+
+func TestReleaseThenReclaim(t *testing.T) {
+	g, _ := New(Options{BootID: "b"})
+	tok, _ := g.Claim(g.Code(), "owner-a")
+
+	// Wrong bearer cannot release.
+	if _, err := g.Release("wrong", "x"); !errors.Is(err, ErrReleaseForbidden) {
+		t.Fatalf("bad release err = %v", err)
+	}
+	// Present owner releases → fresh code, back to Unclaimed.
+	code, err := g.Release(tok, "owner-a")
+	if err != nil || code == "" {
+		t.Fatalf("release: code=%q err=%v", code, err)
+	}
+	if g.Authorized(tok) {
+		t.Fatal("revoked token must not be accepted")
+	}
+	if !g.Status().NeedsCode {
+		t.Fatal("released worker must be claimable again")
+	}
+	// Another service can now claim with the new code.
+	tok2, err := g.Claim(code, "owner-b")
+	if err != nil || tok2 == "" {
+		t.Fatalf("reclaim: %v", err)
+	}
+	if !g.Authorized(tok2) {
+		t.Fatal("new token must be accepted")
+	}
+}
+
+func TestReleaseForbiddenForPreauthorized(t *testing.T) {
+	g, _ := New(Options{PreAuthorizedToken: "fixed"})
+	if _, err := g.Release("fixed", "x"); !errors.Is(err, ErrReleaseForbidden) {
+		t.Fatalf("err = %v, want ErrReleaseForbidden", err)
+	}
+}

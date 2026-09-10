@@ -87,6 +87,8 @@ const (
 	WorkerEnrollStatusProcedure = "/worker.v1.WorkerEnroll/Status"
 	// WorkerEnrollClaimProcedure is the fully-qualified name of the WorkerEnroll's Claim RPC.
 	WorkerEnrollClaimProcedure = "/worker.v1.WorkerEnroll/Claim"
+	// WorkerEnrollUnreleaseProcedure is the fully-qualified name of the WorkerEnroll's Unrelease RPC.
+	WorkerEnrollUnreleaseProcedure = "/worker.v1.WorkerEnroll/Unrelease"
 )
 
 // WorkerServiceClient is a client for the worker.v1.WorkerService service.
@@ -427,6 +429,12 @@ type WorkerEnrollClient interface {
 	// Claim consumes the one-time code and installs the worker-issued bearer
 	// token. One winner per worker lifetime; subsequent calls → AlreadyExists.
 	Claim(context.Context, *connect.Request[v1.EnrollClaimRequest]) (*connect.Response[v1.EnrollClaimResponse], error)
+	// Unrelease revokes the current token and returns the worker to Unclaimed
+	// with a FRESH one-time code. The released worker can then be claimed again
+	// by any caller holding the new code. Requires the CURRENT bearer token
+	// (only the current owner may release); pre-authorized (managed) workers
+	// cannot be released.
+	Unrelease(context.Context, *connect.Request[v1.EnrollUnreleaseRequest]) (*connect.Response[v1.EnrollUnreleaseResponse], error)
 }
 
 // NewWorkerEnrollClient constructs a client for the worker.v1.WorkerEnroll service. By default, it
@@ -452,13 +460,20 @@ func NewWorkerEnrollClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(workerEnrollMethods.ByName("Claim")),
 			connect.WithClientOptions(opts...),
 		),
+		unrelease: connect.NewClient[v1.EnrollUnreleaseRequest, v1.EnrollUnreleaseResponse](
+			httpClient,
+			baseURL+WorkerEnrollUnreleaseProcedure,
+			connect.WithSchema(workerEnrollMethods.ByName("Unrelease")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // workerEnrollClient implements WorkerEnrollClient.
 type workerEnrollClient struct {
-	status *connect.Client[v1.EnrollStatusRequest, v1.EnrollStatusResponse]
-	claim  *connect.Client[v1.EnrollClaimRequest, v1.EnrollClaimResponse]
+	status    *connect.Client[v1.EnrollStatusRequest, v1.EnrollStatusResponse]
+	claim     *connect.Client[v1.EnrollClaimRequest, v1.EnrollClaimResponse]
+	unrelease *connect.Client[v1.EnrollUnreleaseRequest, v1.EnrollUnreleaseResponse]
 }
 
 // Status calls worker.v1.WorkerEnroll.Status.
@@ -471,6 +486,11 @@ func (c *workerEnrollClient) Claim(ctx context.Context, req *connect.Request[v1.
 	return c.claim.CallUnary(ctx, req)
 }
 
+// Unrelease calls worker.v1.WorkerEnroll.Unrelease.
+func (c *workerEnrollClient) Unrelease(ctx context.Context, req *connect.Request[v1.EnrollUnreleaseRequest]) (*connect.Response[v1.EnrollUnreleaseResponse], error) {
+	return c.unrelease.CallUnary(ctx, req)
+}
+
 // WorkerEnrollHandler is an implementation of the worker.v1.WorkerEnroll service.
 type WorkerEnrollHandler interface {
 	// Status reports whether the worker still needs claiming (used by a
@@ -479,6 +499,12 @@ type WorkerEnrollHandler interface {
 	// Claim consumes the one-time code and installs the worker-issued bearer
 	// token. One winner per worker lifetime; subsequent calls → AlreadyExists.
 	Claim(context.Context, *connect.Request[v1.EnrollClaimRequest]) (*connect.Response[v1.EnrollClaimResponse], error)
+	// Unrelease revokes the current token and returns the worker to Unclaimed
+	// with a FRESH one-time code. The released worker can then be claimed again
+	// by any caller holding the new code. Requires the CURRENT bearer token
+	// (only the current owner may release); pre-authorized (managed) workers
+	// cannot be released.
+	Unrelease(context.Context, *connect.Request[v1.EnrollUnreleaseRequest]) (*connect.Response[v1.EnrollUnreleaseResponse], error)
 }
 
 // NewWorkerEnrollHandler builds an HTTP handler from the service implementation. It returns the
@@ -500,12 +526,20 @@ func NewWorkerEnrollHandler(svc WorkerEnrollHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(workerEnrollMethods.ByName("Claim")),
 		connect.WithHandlerOptions(opts...),
 	)
+	workerEnrollUnreleaseHandler := connect.NewUnaryHandler(
+		WorkerEnrollUnreleaseProcedure,
+		svc.Unrelease,
+		connect.WithSchema(workerEnrollMethods.ByName("Unrelease")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/worker.v1.WorkerEnroll/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WorkerEnrollStatusProcedure:
 			workerEnrollStatusHandler.ServeHTTP(w, r)
 		case WorkerEnrollClaimProcedure:
 			workerEnrollClaimHandler.ServeHTTP(w, r)
+		case WorkerEnrollUnreleaseProcedure:
+			workerEnrollUnreleaseHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -521,4 +555,8 @@ func (UnimplementedWorkerEnrollHandler) Status(context.Context, *connect.Request
 
 func (UnimplementedWorkerEnrollHandler) Claim(context.Context, *connect.Request[v1.EnrollClaimRequest]) (*connect.Response[v1.EnrollClaimResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("worker.v1.WorkerEnroll.Claim is not implemented"))
+}
+
+func (UnimplementedWorkerEnrollHandler) Unrelease(context.Context, *connect.Request[v1.EnrollUnreleaseRequest]) (*connect.Response[v1.EnrollUnreleaseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("worker.v1.WorkerEnroll.Unrelease is not implemented"))
 }
