@@ -146,7 +146,7 @@ func (m *Manager) Execute(ctx context.Context, command, workdir string, env map[
 		case err != nil:
 			state = StateFailed
 			job.ExitCode = int32(res.ExitCode)
-			job.publishLine("builtin shell error: " + err.Error())
+			job.Stderr.Write([]byte("builtin shell error: " + err.Error() + "\n"))
 		case jobCtx.Err() != nil:
 			state = StateKilled
 			job.ExitCode = int32(res.ExitCode)

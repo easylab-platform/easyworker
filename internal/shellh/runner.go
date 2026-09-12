@@ -77,7 +77,14 @@ func (r *Runner) Run(ctx context.Context, command, workdir string, stdin io.Read
 func (r *Runner) run(ctx context.Context, command, workdir string, env []string, stdin io.Reader, stdout, stderr io.Writer) (Result, error) {
 	cwd := r.Workspace
 	if workdir != "" {
-		cwd = filepath.Join(r.Workspace, filepath.FromSlash(workdir))
+		if filepath.IsAbs(workdir) {
+			// Absolute workdirs are used as-is (callers pin an absolute dir
+			// such as a mounted workspace); only relative ones resolve against
+			// the workspace root.
+			cwd = filepath.Clean(workdir)
+		} else {
+			cwd = filepath.Join(r.Workspace, filepath.FromSlash(workdir))
+		}
 	}
 
 	file, err := syntax.NewParser().Parse(strings.NewReader(command), "")
