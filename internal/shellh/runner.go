@@ -43,6 +43,20 @@ func New(workspace string, env []string) *Runner {
 	}
 }
 
+// RunWithEnv is Run with per-job environment additions on top of the base
+// env. Additive keys override the base. It does NOT mutate the Runner, so
+// concurrent jobs are safe.
+func (r *Runner) RunWithEnv(ctx context.Context, command, workdir string, env map[string]string, stdin io.Reader, stdout, stderr io.Writer) (Result, error) {
+	if len(env) == 0 {
+		return r.run(ctx, command, workdir, r.Env, stdin, stdout, stderr)
+	}
+	merged := append([]string{}, r.Env...)
+	for k, v := range env {
+		merged = append(merged, k+"="+v)
+	}
+	return r.run(ctx, command, workdir, merged, stdin, stdout, stderr)
+}
+
 // Result is the outcome of one interpreted command run.
 type Result struct {
 	ExitCode int
@@ -55,6 +69,12 @@ type Result struct {
 // done; on ctx cancellation the process group is killed and the exit code is
 // 130 (interrupt-ish), matching the legacy worker behavior.
 func (r *Runner) Run(ctx context.Context, command, workdir string, stdin io.Reader, stdout, stderr io.Writer) (Result, error) {
+	return r.run(ctx, command, workdir, r.Env, stdin, stdout, stderr)
+}
+
+// run is the shared implementation; env is the effective process environment
+// (callers pass r.Env, or a per-job merge).
+func (r *Runner) run(ctx context.Context, command, workdir string, env []string, stdin io.Reader, stdout, stderr io.Writer) (Result, error) {
 	cwd := r.Workspace
 	if workdir != "" {
 		cwd = filepath.Join(r.Workspace, filepath.FromSlash(workdir))
@@ -67,9 +87,9 @@ func (r *Runner) Run(ctx context.Context, command, workdir string, stdin io.Read
 
 	runner, err := interp.New(
 		interp.Dir(cwd),
-		interp.Env(expand.ListEnviron(r.Env...)),
+		interp.Env(expand.ListEnviron(env...)),
 		interp.StdIO(stdin, stdout, stderr),
-		interp.ExecHandlers(r.execMiddleware()),
+		interp.ExecHandlers(r.execMiddleware(env)),
 		interp.OpenHandler(r.openHandler()),
 	)
 	if err != nil {
@@ -235,7 +255,7 @@ func (lb *LineBuffer) Tail(n int) string {
 // file; nil elsewhere). Temporary diagnostic aid for the kill-latency hunt.
 var Debugf = func(format string, args ...interface{}) {}
 
-func (r *Runner) execMiddleware() func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+func (r *Runner) execMiddleware(env []string) func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		return func(ctx context.Context, args []string) error {
 			hc := interp.HandlerCtx(ctx)
@@ -246,7 +266,7 @@ func (r *Runner) execMiddleware() func(next interp.ExecHandlerFunc) interp.ExecH
 
 			cmd := exec.CommandContext(ctx, name, argv...)
 			cmd.Dir = hc.Dir
-			cmd.Env = r.Env
+			cmd.Env = env
 			cmd.Stdout = hc.Stdout
 			cmd.Stderr = hc.Stderr
 			cmd.Stdin = hc.Stdin

@@ -20,7 +20,9 @@ no passthrough to a host shell and no fallback, on any platform:
   the interpreter spawns
 
 Job env is allowlisted (proxy/registry knobs + PATH/HOME) — the worker's own
-environment (which may hold platform tokens) is never inherited.
+environment (which may hold platform tokens) is never inherited. Callers may
+additionally pass per-job env on `Execute` (`ExecuteRequest.env`), which is
+layered on top of the allowlisted base.
 
 ## Pure executor: no repo/rev knowledge
 

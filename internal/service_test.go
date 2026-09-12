@@ -91,8 +91,8 @@ func TestExecuteWatchLifecycle(t *testing.T) {
 	if doneEv == nil || doneEv.ExitCode != 0 {
 		t.Fatalf("done event = %+v", doneEv)
 	}
-	// live fanout carries stdout only (stderr goes to history/tails)
-	if len(lines) != 2 || lines[0] != "first" || lines[1] != "second" {
+	// live fanout carries BOTH stdout and stderr in sequence order
+	if len(lines) != 3 || lines[0] != "first" || lines[1] != "second" || lines[2] != "warn" {
 		t.Errorf("live lines = %v", lines)
 	}
 

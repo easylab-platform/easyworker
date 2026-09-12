@@ -115,7 +115,8 @@ func (m *Manager) Execute(ctx context.Context, command, workdir string, env map[
 		m.store.TryEnqueueLine(id, rec.Seq, StreamStdout, rec.Line) // persistence
 	})
 	job.Stderr = shellh.NewLineBuffer(m.memLines, nextSeq, func(rec shellh.LineRec) {
-		m.store.TryEnqueueLine(id, rec.Seq, StreamStderr, rec.Line) // history only
+		job.publishLine(rec.Line)                                   // live fanout (stderr)
+		m.store.TryEnqueueLine(id, rec.Seq, StreamStderr, rec.Line) // persistence
 	})
 
 	m.mu.Lock()
@@ -133,7 +134,7 @@ func (m *Manager) Execute(ctx context.Context, command, workdir string, env map[
 		defer job.finishSubs()
 
 		shellh.Debugf("job %s: goroutine start (cmd=%q)", id, command)
-		res, err := m.runner.Run(jobCtx, command, workdir, r, job.Stdout, job.Stderr)
+		res, err := m.runner.RunWithEnv(jobCtx, command, workdir, env, r, job.Stdout, job.Stderr)
 		shellh.Debugf("job %s: Run returned (err=%v, exit=%d, ctxErr=%v) mono=%d", id, err, res.ExitCode, jobCtx.Err() != nil, shellh.MonoMS())
 		// Promote a trailing partial line (output without final \n) into the
 		// history before signaling completion.
@@ -330,11 +331,14 @@ func (m *Manager) ReplayTail(id string, n int) []string {
 }
 
 // Subscribe returns the buffered live window (replay) plus a channel for
-// subsequent stdout lines (nil channel if the job already finished). The
-// channel closes on completion.
+// subsequent output lines (nil channel if the job already finished). The
+// replay merges stdout and stderr in sequence order; the channel carries lines
+// from both streams. The channel closes on completion.
 func (j *Job) Subscribe() (replay []string, ch chan string) {
 	j.subMu.Lock()
 	defer j.subMu.Unlock()
+	recs := append(j.Stdout.Recs(), j.Stderr.Recs()...)
+	sort.Slice(recs, func(a, b int) bool { return recs[a].Seq < recs[b].Seq })
 	recsToLines := func(recs []shellh.LineRec) []string {
 		out := make([]string, 0, len(recs))
 		for _, r := range recs {
@@ -344,12 +348,12 @@ func (j *Job) Subscribe() (replay []string, ch chan string) {
 	}
 	select {
 	case <-j.done:
-		return recsToLines(j.Stdout.Recs()), nil
+		return recsToLines(recs), nil
 	default:
 	}
 	ch = make(chan string, 256)
 	j.subs = append(j.subs, ch)
-	return recsToLines(j.Stdout.Recs()), ch
+	return recsToLines(recs), ch
 }
 
 func (j *Job) publishLine(line string) {
