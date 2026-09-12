@@ -1341,6 +1341,130 @@ func (x *FileListResponse) GetFiles() []*FileEntry {
 	return nil
 }
 
+// SyncFolder unpacks a tarball of a directory tree into the worker's
+// workspace (the create/refresh path for sandbox + CI job workspaces). Every
+// entry is resolved under the workspace root (containment); `clean` empties
+// `dest` first. `rev` is advisory (recorded for idempotency/audit).
+type SyncFolderRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tarball       []byte                 `protobuf:"bytes,1,opt,name=tarball,proto3" json:"tarball,omitempty"`
+	Dest          string                 `protobuf:"bytes,2,opt,name=dest,proto3" json:"dest,omitempty"`    // workspace-relative subdir; default "." (root)
+	Clean         bool                   `protobuf:"varint,3,opt,name=clean,proto3" json:"clean,omitempty"` // true = empty dest before unpacking
+	Rev           string                 `protobuf:"bytes,4,opt,name=rev,proto3" json:"rev,omitempty"`      // optional revision id being synced
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncFolderRequest) Reset() {
+	*x = SyncFolderRequest{}
+	mi := &file_worker_v1_worker_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncFolderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncFolderRequest) ProtoMessage() {}
+
+func (x *SyncFolderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_worker_v1_worker_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncFolderRequest.ProtoReflect.Descriptor instead.
+func (*SyncFolderRequest) Descriptor() ([]byte, []int) {
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *SyncFolderRequest) GetTarball() []byte {
+	if x != nil {
+		return x.Tarball
+	}
+	return nil
+}
+
+func (x *SyncFolderRequest) GetDest() string {
+	if x != nil {
+		return x.Dest
+	}
+	return ""
+}
+
+func (x *SyncFolderRequest) GetClean() bool {
+	if x != nil {
+		return x.Clean
+	}
+	return false
+}
+
+func (x *SyncFolderRequest) GetRev() string {
+	if x != nil {
+		return x.Rev
+	}
+	return ""
+}
+
+type SyncFolderResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Files         int32                  `protobuf:"varint,1,opt,name=files,proto3" json:"files,omitempty"`
+	Root          string                 `protobuf:"bytes,2,opt,name=root,proto3" json:"root,omitempty"` // the workspace root used
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncFolderResponse) Reset() {
+	*x = SyncFolderResponse{}
+	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncFolderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncFolderResponse) ProtoMessage() {}
+
+func (x *SyncFolderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncFolderResponse.ProtoReflect.Descriptor instead.
+func (*SyncFolderResponse) Descriptor() ([]byte, []int) {
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *SyncFolderResponse) GetFiles() int32 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
+func (x *SyncFolderResponse) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
 type EnrollStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1349,7 +1473,7 @@ type EnrollStatusRequest struct {
 
 func (x *EnrollStatusRequest) Reset() {
 	*x = EnrollStatusRequest{}
-	mi := &file_worker_v1_worker_proto_msgTypes[24]
+	mi := &file_worker_v1_worker_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1361,7 +1485,7 @@ func (x *EnrollStatusRequest) String() string {
 func (*EnrollStatusRequest) ProtoMessage() {}
 
 func (x *EnrollStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[24]
+	mi := &file_worker_v1_worker_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1374,7 +1498,7 @@ func (x *EnrollStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollStatusRequest.ProtoReflect.Descriptor instead.
 func (*EnrollStatusRequest) Descriptor() ([]byte, []int) {
-	return file_worker_v1_worker_proto_rawDescGZIP(), []int{24}
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{26}
 }
 
 type EnrollStatusResponse struct {
@@ -1389,7 +1513,7 @@ type EnrollStatusResponse struct {
 
 func (x *EnrollStatusResponse) Reset() {
 	*x = EnrollStatusResponse{}
-	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	mi := &file_worker_v1_worker_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1401,7 +1525,7 @@ func (x *EnrollStatusResponse) String() string {
 func (*EnrollStatusResponse) ProtoMessage() {}
 
 func (x *EnrollStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[25]
+	mi := &file_worker_v1_worker_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1414,7 +1538,7 @@ func (x *EnrollStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollStatusResponse.ProtoReflect.Descriptor instead.
 func (*EnrollStatusResponse) Descriptor() ([]byte, []int) {
-	return file_worker_v1_worker_proto_rawDescGZIP(), []int{25}
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *EnrollStatusResponse) GetClaimed() bool {
@@ -1455,7 +1579,7 @@ type EnrollClaimRequest struct {
 
 func (x *EnrollClaimRequest) Reset() {
 	*x = EnrollClaimRequest{}
-	mi := &file_worker_v1_worker_proto_msgTypes[26]
+	mi := &file_worker_v1_worker_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1467,7 +1591,7 @@ func (x *EnrollClaimRequest) String() string {
 func (*EnrollClaimRequest) ProtoMessage() {}
 
 func (x *EnrollClaimRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[26]
+	mi := &file_worker_v1_worker_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1480,7 +1604,7 @@ func (x *EnrollClaimRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollClaimRequest.ProtoReflect.Descriptor instead.
 func (*EnrollClaimRequest) Descriptor() ([]byte, []int) {
-	return file_worker_v1_worker_proto_rawDescGZIP(), []int{26}
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *EnrollClaimRequest) GetCode() string {
@@ -1507,7 +1631,7 @@ type EnrollClaimResponse struct {
 
 func (x *EnrollClaimResponse) Reset() {
 	*x = EnrollClaimResponse{}
-	mi := &file_worker_v1_worker_proto_msgTypes[27]
+	mi := &file_worker_v1_worker_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1519,7 +1643,7 @@ func (x *EnrollClaimResponse) String() string {
 func (*EnrollClaimResponse) ProtoMessage() {}
 
 func (x *EnrollClaimResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[27]
+	mi := &file_worker_v1_worker_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1532,7 +1656,7 @@ func (x *EnrollClaimResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollClaimResponse.ProtoReflect.Descriptor instead.
 func (*EnrollClaimResponse) Descriptor() ([]byte, []int) {
-	return file_worker_v1_worker_proto_rawDescGZIP(), []int{27}
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *EnrollClaimResponse) GetOk() bool {
@@ -1560,7 +1684,7 @@ type EnrollUnreleaseRequest struct {
 
 func (x *EnrollUnreleaseRequest) Reset() {
 	*x = EnrollUnreleaseRequest{}
-	mi := &file_worker_v1_worker_proto_msgTypes[28]
+	mi := &file_worker_v1_worker_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +1696,7 @@ func (x *EnrollUnreleaseRequest) String() string {
 func (*EnrollUnreleaseRequest) ProtoMessage() {}
 
 func (x *EnrollUnreleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[28]
+	mi := &file_worker_v1_worker_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +1709,7 @@ func (x *EnrollUnreleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollUnreleaseRequest.ProtoReflect.Descriptor instead.
 func (*EnrollUnreleaseRequest) Descriptor() ([]byte, []int) {
-	return file_worker_v1_worker_proto_rawDescGZIP(), []int{28}
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *EnrollUnreleaseRequest) GetOwnerId() string {
@@ -1605,7 +1729,7 @@ type EnrollUnreleaseResponse struct {
 
 func (x *EnrollUnreleaseResponse) Reset() {
 	*x = EnrollUnreleaseResponse{}
-	mi := &file_worker_v1_worker_proto_msgTypes[29]
+	mi := &file_worker_v1_worker_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1617,7 +1741,7 @@ func (x *EnrollUnreleaseResponse) String() string {
 func (*EnrollUnreleaseResponse) ProtoMessage() {}
 
 func (x *EnrollUnreleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[29]
+	mi := &file_worker_v1_worker_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1630,7 +1754,7 @@ func (x *EnrollUnreleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollUnreleaseResponse.ProtoReflect.Descriptor instead.
 func (*EnrollUnreleaseResponse) Descriptor() ([]byte, []int) {
-	return file_worker_v1_worker_proto_rawDescGZIP(), []int{29}
+	return file_worker_v1_worker_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *EnrollUnreleaseResponse) GetOk() bool {
@@ -1658,7 +1782,7 @@ type WatchJobResponse_Done struct {
 
 func (x *WatchJobResponse_Done) Reset() {
 	*x = WatchJobResponse_Done{}
-	mi := &file_worker_v1_worker_proto_msgTypes[31]
+	mi := &file_worker_v1_worker_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1670,7 +1794,7 @@ func (x *WatchJobResponse_Done) String() string {
 func (*WatchJobResponse_Done) ProtoMessage() {}
 
 func (x *WatchJobResponse_Done) ProtoReflect() protoreflect.Message {
-	mi := &file_worker_v1_worker_proto_msgTypes[31]
+	mi := &file_worker_v1_worker_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1797,7 +1921,15 @@ const file_worker_v1_worker_proto_rawDesc = "" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"U\n" +
 	"\x10FileListResponse\x12\x15\n" +
 	"\x06is_dir\x18\x01 \x01(\bR\x05isDir\x12*\n" +
-	"\x05files\x18\x02 \x03(\v2\x14.worker.v1.FileEntryR\x05files\"\x15\n" +
+	"\x05files\x18\x02 \x03(\v2\x14.worker.v1.FileEntryR\x05files\"i\n" +
+	"\x11SyncFolderRequest\x12\x18\n" +
+	"\atarball\x18\x01 \x01(\fR\atarball\x12\x12\n" +
+	"\x04dest\x18\x02 \x01(\tR\x04dest\x12\x14\n" +
+	"\x05clean\x18\x03 \x01(\bR\x05clean\x12\x10\n" +
+	"\x03rev\x18\x04 \x01(\tR\x03rev\">\n" +
+	"\x12SyncFolderResponse\x12\x14\n" +
+	"\x05files\x18\x01 \x01(\x05R\x05files\x12\x12\n" +
+	"\x04root\x18\x02 \x01(\tR\x04root\"\x15\n" +
 	"\x13EnrollStatusRequest\"\x8e\x01\n" +
 	"\x14EnrollStatusResponse\x12\x18\n" +
 	"\aclaimed\x18\x01 \x01(\bR\aclaimed\x12\x1d\n" +
@@ -1815,7 +1947,7 @@ const file_worker_v1_worker_proto_rawDesc = "" +
 	"\bowner_id\x18\x01 \x01(\tR\aownerId\"=\n" +
 	"\x17EnrollUnreleaseResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code2\xf9\x05\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code2\xc4\x06\n" +
 	"\rWorkerService\x127\n" +
 	"\x04Info\x12\x16.worker.v1.InfoRequest\x1a\x17.worker.v1.InfoResponse\x12@\n" +
 	"\aExecute\x12\x19.worker.v1.ExecuteRequest\x1a\x1a.worker.v1.ExecuteResponse\x12C\n" +
@@ -1827,7 +1959,9 @@ const file_worker_v1_worker_proto_rawDesc = "" +
 	"\aJobKill\x12\x19.worker.v1.JobKillRequest\x1a\x1a.worker.v1.JobKillResponse\x12C\n" +
 	"\bFileRead\x12\x1a.worker.v1.FileReadRequest\x1a\x1b.worker.v1.FileReadResponse\x12F\n" +
 	"\tFileWrite\x12\x1b.worker.v1.FileWriteRequest\x1a\x1c.worker.v1.FileWriteResponse\x12C\n" +
-	"\bFileList\x12\x1a.worker.v1.FileListRequest\x1a\x1b.worker.v1.FileListResponse2\xf5\x01\n" +
+	"\bFileList\x12\x1a.worker.v1.FileListRequest\x1a\x1b.worker.v1.FileListResponse\x12I\n" +
+	"\n" +
+	"SyncFolder\x12\x1c.worker.v1.SyncFolderRequest\x1a\x1d.worker.v1.SyncFolderResponse2\xf5\x01\n" +
 	"\fWorkerEnroll\x12I\n" +
 	"\x06Status\x12\x1e.worker.v1.EnrollStatusRequest\x1a\x1f.worker.v1.EnrollStatusResponse\x12F\n" +
 	"\x05Claim\x12\x1d.worker.v1.EnrollClaimRequest\x1a\x1e.worker.v1.EnrollClaimResponse\x12R\n" +
@@ -1845,7 +1979,7 @@ func file_worker_v1_worker_proto_rawDescGZIP() []byte {
 	return file_worker_v1_worker_proto_rawDescData
 }
 
-var file_worker_v1_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_worker_v1_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_worker_v1_worker_proto_goTypes = []any{
 	(*InfoRequest)(nil),             // 0: worker.v1.InfoRequest
 	(*InfoResponse)(nil),            // 1: worker.v1.InfoResponse
@@ -1871,19 +2005,21 @@ var file_worker_v1_worker_proto_goTypes = []any{
 	(*FileEntry)(nil),               // 21: worker.v1.FileEntry
 	(*FileListRequest)(nil),         // 22: worker.v1.FileListRequest
 	(*FileListResponse)(nil),        // 23: worker.v1.FileListResponse
-	(*EnrollStatusRequest)(nil),     // 24: worker.v1.EnrollStatusRequest
-	(*EnrollStatusResponse)(nil),    // 25: worker.v1.EnrollStatusResponse
-	(*EnrollClaimRequest)(nil),      // 26: worker.v1.EnrollClaimRequest
-	(*EnrollClaimResponse)(nil),     // 27: worker.v1.EnrollClaimResponse
-	(*EnrollUnreleaseRequest)(nil),  // 28: worker.v1.EnrollUnreleaseRequest
-	(*EnrollUnreleaseResponse)(nil), // 29: worker.v1.EnrollUnreleaseResponse
-	nil,                             // 30: worker.v1.ExecuteRequest.EnvEntry
-	(*WatchJobResponse_Done)(nil),   // 31: worker.v1.WatchJobResponse.Done
+	(*SyncFolderRequest)(nil),       // 24: worker.v1.SyncFolderRequest
+	(*SyncFolderResponse)(nil),      // 25: worker.v1.SyncFolderResponse
+	(*EnrollStatusRequest)(nil),     // 26: worker.v1.EnrollStatusRequest
+	(*EnrollStatusResponse)(nil),    // 27: worker.v1.EnrollStatusResponse
+	(*EnrollClaimRequest)(nil),      // 28: worker.v1.EnrollClaimRequest
+	(*EnrollClaimResponse)(nil),     // 29: worker.v1.EnrollClaimResponse
+	(*EnrollUnreleaseRequest)(nil),  // 30: worker.v1.EnrollUnreleaseRequest
+	(*EnrollUnreleaseResponse)(nil), // 31: worker.v1.EnrollUnreleaseResponse
+	nil,                             // 32: worker.v1.ExecuteRequest.EnvEntry
+	(*WatchJobResponse_Done)(nil),   // 33: worker.v1.WatchJobResponse.Done
 }
 var file_worker_v1_worker_proto_depIdxs = []int32{
-	30, // 0: worker.v1.ExecuteRequest.env:type_name -> worker.v1.ExecuteRequest.EnvEntry
+	32, // 0: worker.v1.ExecuteRequest.env:type_name -> worker.v1.ExecuteRequest.EnvEntry
 	4,  // 1: worker.v1.ListJobsResponse.jobs:type_name -> worker.v1.JobEntry
-	31, // 2: worker.v1.WatchJobResponse.done:type_name -> worker.v1.WatchJobResponse.Done
+	33, // 2: worker.v1.WatchJobResponse.done:type_name -> worker.v1.WatchJobResponse.Done
 	21, // 3: worker.v1.FileListResponse.files:type_name -> worker.v1.FileEntry
 	0,  // 4: worker.v1.WorkerService.Info:input_type -> worker.v1.InfoRequest
 	2,  // 5: worker.v1.WorkerService.Execute:input_type -> worker.v1.ExecuteRequest
@@ -1896,25 +2032,27 @@ var file_worker_v1_worker_proto_depIdxs = []int32{
 	17, // 12: worker.v1.WorkerService.FileRead:input_type -> worker.v1.FileReadRequest
 	19, // 13: worker.v1.WorkerService.FileWrite:input_type -> worker.v1.FileWriteRequest
 	22, // 14: worker.v1.WorkerService.FileList:input_type -> worker.v1.FileListRequest
-	24, // 15: worker.v1.WorkerEnroll.Status:input_type -> worker.v1.EnrollStatusRequest
-	26, // 16: worker.v1.WorkerEnroll.Claim:input_type -> worker.v1.EnrollClaimRequest
-	28, // 17: worker.v1.WorkerEnroll.Unrelease:input_type -> worker.v1.EnrollUnreleaseRequest
-	1,  // 18: worker.v1.WorkerService.Info:output_type -> worker.v1.InfoResponse
-	3,  // 19: worker.v1.WorkerService.Execute:output_type -> worker.v1.ExecuteResponse
-	6,  // 20: worker.v1.WorkerService.ListJobs:output_type -> worker.v1.ListJobsResponse
-	8,  // 21: worker.v1.WorkerService.WatchJob:output_type -> worker.v1.WatchJobResponse
-	10, // 22: worker.v1.WorkerService.JobOutput:output_type -> worker.v1.JobOutputResponse
-	12, // 23: worker.v1.WorkerService.JobWait:output_type -> worker.v1.JobWaitResponse
-	14, // 24: worker.v1.WorkerService.JobStdin:output_type -> worker.v1.JobStdinResponse
-	16, // 25: worker.v1.WorkerService.JobKill:output_type -> worker.v1.JobKillResponse
-	18, // 26: worker.v1.WorkerService.FileRead:output_type -> worker.v1.FileReadResponse
-	20, // 27: worker.v1.WorkerService.FileWrite:output_type -> worker.v1.FileWriteResponse
-	23, // 28: worker.v1.WorkerService.FileList:output_type -> worker.v1.FileListResponse
-	25, // 29: worker.v1.WorkerEnroll.Status:output_type -> worker.v1.EnrollStatusResponse
-	27, // 30: worker.v1.WorkerEnroll.Claim:output_type -> worker.v1.EnrollClaimResponse
-	29, // 31: worker.v1.WorkerEnroll.Unrelease:output_type -> worker.v1.EnrollUnreleaseResponse
-	18, // [18:32] is the sub-list for method output_type
-	4,  // [4:18] is the sub-list for method input_type
+	24, // 15: worker.v1.WorkerService.SyncFolder:input_type -> worker.v1.SyncFolderRequest
+	26, // 16: worker.v1.WorkerEnroll.Status:input_type -> worker.v1.EnrollStatusRequest
+	28, // 17: worker.v1.WorkerEnroll.Claim:input_type -> worker.v1.EnrollClaimRequest
+	30, // 18: worker.v1.WorkerEnroll.Unrelease:input_type -> worker.v1.EnrollUnreleaseRequest
+	1,  // 19: worker.v1.WorkerService.Info:output_type -> worker.v1.InfoResponse
+	3,  // 20: worker.v1.WorkerService.Execute:output_type -> worker.v1.ExecuteResponse
+	6,  // 21: worker.v1.WorkerService.ListJobs:output_type -> worker.v1.ListJobsResponse
+	8,  // 22: worker.v1.WorkerService.WatchJob:output_type -> worker.v1.WatchJobResponse
+	10, // 23: worker.v1.WorkerService.JobOutput:output_type -> worker.v1.JobOutputResponse
+	12, // 24: worker.v1.WorkerService.JobWait:output_type -> worker.v1.JobWaitResponse
+	14, // 25: worker.v1.WorkerService.JobStdin:output_type -> worker.v1.JobStdinResponse
+	16, // 26: worker.v1.WorkerService.JobKill:output_type -> worker.v1.JobKillResponse
+	18, // 27: worker.v1.WorkerService.FileRead:output_type -> worker.v1.FileReadResponse
+	20, // 28: worker.v1.WorkerService.FileWrite:output_type -> worker.v1.FileWriteResponse
+	23, // 29: worker.v1.WorkerService.FileList:output_type -> worker.v1.FileListResponse
+	25, // 30: worker.v1.WorkerService.SyncFolder:output_type -> worker.v1.SyncFolderResponse
+	27, // 31: worker.v1.WorkerEnroll.Status:output_type -> worker.v1.EnrollStatusResponse
+	29, // 32: worker.v1.WorkerEnroll.Claim:output_type -> worker.v1.EnrollClaimResponse
+	31, // 33: worker.v1.WorkerEnroll.Unrelease:output_type -> worker.v1.EnrollUnreleaseResponse
+	19, // [19:34] is the sub-list for method output_type
+	4,  // [4:19] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -1935,7 +2073,7 @@ func file_worker_v1_worker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_worker_v1_worker_proto_rawDesc), len(file_worker_v1_worker_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   32,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

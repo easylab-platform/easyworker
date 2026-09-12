@@ -272,6 +272,16 @@ func (s *WorkerService) FileList(ctx context.Context, req *connect.Request[worke
 	return connect.NewResponse(&workerv1.FileListResponse{IsDir: isDir, Files: out}), nil
 }
 
+// SyncFolder unpacks a directory-tree tarball into the workspace (the
+// easylab -> worker checkout path for sandbox/CI workspaces).
+func (s *WorkerService) SyncFolder(ctx context.Context, req *connect.Request[workerv1.SyncFolderRequest]) (*connect.Response[workerv1.SyncFolderResponse], error) {
+	n, err := s.files.SyncFolder(req.Msg.Tarball, req.Msg.Dest, req.Msg.Clean)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&workerv1.SyncFolderResponse{Files: int32(n), Root: s.files.Root()}), nil
+}
+
 // BootID exposes this worker process's boot id (surfaced by Info; used as the
 // enrollment gate's identity).
 func (s *WorkerService) BootID() string { return s.bootID }

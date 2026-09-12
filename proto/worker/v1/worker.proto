@@ -138,6 +138,23 @@ message FileListResponse {
   repeated FileEntry files = 2;
 }
 
+// ---- workspace sync (easylab -> worker) ----
+
+// SyncFolder unpacks a tarball of a directory tree into the worker's
+// workspace (the create/refresh path for sandbox + CI job workspaces). Every
+// entry is resolved under the workspace root (containment); `clean` empties
+// `dest` first. `rev` is advisory (recorded for idempotency/audit).
+message SyncFolderRequest {
+  bytes  tarball = 1;
+  string dest    = 2; // workspace-relative subdir; default "." (root)
+  bool   clean   = 3; // true = empty dest before unpacking
+  string rev     = 4; // optional revision id being synced
+}
+message SyncFolderResponse {
+  int32  files = 1;
+  string root  = 2; // the workspace root used
+}
+
 service WorkerService {
   rpc Info(InfoRequest) returns (InfoResponse);
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
@@ -150,6 +167,7 @@ service WorkerService {
   rpc FileRead(FileReadRequest) returns (FileReadResponse);
   rpc FileWrite(FileWriteRequest) returns (FileWriteResponse);
   rpc FileList(FileListRequest) returns (FileListResponse);
+  rpc SyncFolder(SyncFolderRequest) returns (SyncFolderResponse);
 }
 
 // ---- exclusive enrollment ----

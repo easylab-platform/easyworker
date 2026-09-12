@@ -83,6 +83,9 @@ const (
 	WorkerServiceFileWriteProcedure = "/worker.v1.WorkerService/FileWrite"
 	// WorkerServiceFileListProcedure is the fully-qualified name of the WorkerService's FileList RPC.
 	WorkerServiceFileListProcedure = "/worker.v1.WorkerService/FileList"
+	// WorkerServiceSyncFolderProcedure is the fully-qualified name of the WorkerService's SyncFolder
+	// RPC.
+	WorkerServiceSyncFolderProcedure = "/worker.v1.WorkerService/SyncFolder"
 	// WorkerEnrollStatusProcedure is the fully-qualified name of the WorkerEnroll's Status RPC.
 	WorkerEnrollStatusProcedure = "/worker.v1.WorkerEnroll/Status"
 	// WorkerEnrollClaimProcedure is the fully-qualified name of the WorkerEnroll's Claim RPC.
@@ -104,6 +107,7 @@ type WorkerServiceClient interface {
 	FileRead(context.Context, *connect.Request[v1.FileReadRequest]) (*connect.Response[v1.FileReadResponse], error)
 	FileWrite(context.Context, *connect.Request[v1.FileWriteRequest]) (*connect.Response[v1.FileWriteResponse], error)
 	FileList(context.Context, *connect.Request[v1.FileListRequest]) (*connect.Response[v1.FileListResponse], error)
+	SyncFolder(context.Context, *connect.Request[v1.SyncFolderRequest]) (*connect.Response[v1.SyncFolderResponse], error)
 }
 
 // NewWorkerServiceClient constructs a client for the worker.v1.WorkerService service. By default,
@@ -183,22 +187,29 @@ func NewWorkerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(workerServiceMethods.ByName("FileList")),
 			connect.WithClientOptions(opts...),
 		),
+		syncFolder: connect.NewClient[v1.SyncFolderRequest, v1.SyncFolderResponse](
+			httpClient,
+			baseURL+WorkerServiceSyncFolderProcedure,
+			connect.WithSchema(workerServiceMethods.ByName("SyncFolder")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // workerServiceClient implements WorkerServiceClient.
 type workerServiceClient struct {
-	info      *connect.Client[v1.InfoRequest, v1.InfoResponse]
-	execute   *connect.Client[v1.ExecuteRequest, v1.ExecuteResponse]
-	listJobs  *connect.Client[v1.ListJobsRequest, v1.ListJobsResponse]
-	watchJob  *connect.Client[v1.WatchJobRequest, v1.WatchJobResponse]
-	jobOutput *connect.Client[v1.JobOutputRequest, v1.JobOutputResponse]
-	jobWait   *connect.Client[v1.JobWaitRequest, v1.JobWaitResponse]
-	jobStdin  *connect.Client[v1.JobStdinRequest, v1.JobStdinResponse]
-	jobKill   *connect.Client[v1.JobKillRequest, v1.JobKillResponse]
-	fileRead  *connect.Client[v1.FileReadRequest, v1.FileReadResponse]
-	fileWrite *connect.Client[v1.FileWriteRequest, v1.FileWriteResponse]
-	fileList  *connect.Client[v1.FileListRequest, v1.FileListResponse]
+	info       *connect.Client[v1.InfoRequest, v1.InfoResponse]
+	execute    *connect.Client[v1.ExecuteRequest, v1.ExecuteResponse]
+	listJobs   *connect.Client[v1.ListJobsRequest, v1.ListJobsResponse]
+	watchJob   *connect.Client[v1.WatchJobRequest, v1.WatchJobResponse]
+	jobOutput  *connect.Client[v1.JobOutputRequest, v1.JobOutputResponse]
+	jobWait    *connect.Client[v1.JobWaitRequest, v1.JobWaitResponse]
+	jobStdin   *connect.Client[v1.JobStdinRequest, v1.JobStdinResponse]
+	jobKill    *connect.Client[v1.JobKillRequest, v1.JobKillResponse]
+	fileRead   *connect.Client[v1.FileReadRequest, v1.FileReadResponse]
+	fileWrite  *connect.Client[v1.FileWriteRequest, v1.FileWriteResponse]
+	fileList   *connect.Client[v1.FileListRequest, v1.FileListResponse]
+	syncFolder *connect.Client[v1.SyncFolderRequest, v1.SyncFolderResponse]
 }
 
 // Info calls worker.v1.WorkerService.Info.
@@ -256,6 +267,11 @@ func (c *workerServiceClient) FileList(ctx context.Context, req *connect.Request
 	return c.fileList.CallUnary(ctx, req)
 }
 
+// SyncFolder calls worker.v1.WorkerService.SyncFolder.
+func (c *workerServiceClient) SyncFolder(ctx context.Context, req *connect.Request[v1.SyncFolderRequest]) (*connect.Response[v1.SyncFolderResponse], error) {
+	return c.syncFolder.CallUnary(ctx, req)
+}
+
 // WorkerServiceHandler is an implementation of the worker.v1.WorkerService service.
 type WorkerServiceHandler interface {
 	Info(context.Context, *connect.Request[v1.InfoRequest]) (*connect.Response[v1.InfoResponse], error)
@@ -269,6 +285,7 @@ type WorkerServiceHandler interface {
 	FileRead(context.Context, *connect.Request[v1.FileReadRequest]) (*connect.Response[v1.FileReadResponse], error)
 	FileWrite(context.Context, *connect.Request[v1.FileWriteRequest]) (*connect.Response[v1.FileWriteResponse], error)
 	FileList(context.Context, *connect.Request[v1.FileListRequest]) (*connect.Response[v1.FileListResponse], error)
+	SyncFolder(context.Context, *connect.Request[v1.SyncFolderRequest]) (*connect.Response[v1.SyncFolderResponse], error)
 }
 
 // NewWorkerServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -344,6 +361,12 @@ func NewWorkerServiceHandler(svc WorkerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(workerServiceMethods.ByName("FileList")),
 		connect.WithHandlerOptions(opts...),
 	)
+	workerServiceSyncFolderHandler := connect.NewUnaryHandler(
+		WorkerServiceSyncFolderProcedure,
+		svc.SyncFolder,
+		connect.WithSchema(workerServiceMethods.ByName("SyncFolder")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/worker.v1.WorkerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WorkerServiceInfoProcedure:
@@ -368,6 +391,8 @@ func NewWorkerServiceHandler(svc WorkerServiceHandler, opts ...connect.HandlerOp
 			workerServiceFileWriteHandler.ServeHTTP(w, r)
 		case WorkerServiceFileListProcedure:
 			workerServiceFileListHandler.ServeHTTP(w, r)
+		case WorkerServiceSyncFolderProcedure:
+			workerServiceSyncFolderHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -419,6 +444,10 @@ func (UnimplementedWorkerServiceHandler) FileWrite(context.Context, *connect.Req
 
 func (UnimplementedWorkerServiceHandler) FileList(context.Context, *connect.Request[v1.FileListRequest]) (*connect.Response[v1.FileListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("worker.v1.WorkerService.FileList is not implemented"))
+}
+
+func (UnimplementedWorkerServiceHandler) SyncFolder(context.Context, *connect.Request[v1.SyncFolderRequest]) (*connect.Response[v1.SyncFolderResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("worker.v1.WorkerService.SyncFolder is not implemented"))
 }
 
 // WorkerEnrollClient is a client for the worker.v1.WorkerEnroll service.
