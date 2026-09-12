@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: easyworker
-          image: forgejo.develop.10.199.64.20.nip.io/easylab/easyworker:TAG
+          image: <registry>/easyworker:TAG
           imagePullPolicy: IfNotPresent
           env:
             - name: WORKER_PORT

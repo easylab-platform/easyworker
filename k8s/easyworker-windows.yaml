@@ -1,0 +1,130 @@
+# easyworker on Windows — a non-privileged VM sandbox worker.
+#
+# This schedules a pre-baked Windows 11 image whose guest runs the easyworker
+# binary. KVM comes from the squat/generic-device-plugin as the extended
+# resource squat.ai/kvm (see k8s/generic-device-plugin.yaml); the pod itself
+# stays privileged: false.
+#
+# The worker is fail-closed. Two modes:
+#   * WORKER_TOKEN set   -> pre-authorized at boot (no enrollment/claim).
+#   * WORKER_TOKEN empty -> the guest mints a random one-time code, retrieved
+#                           over SSH from C:\Users\Docker\ewws\worker.state and
+#                           claimed via WorkerEnroll.Claim.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: easyworker-windows
+  namespace: temp
+  labels:
+    app: easyworker-windows
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: easyworker-windows
+  template:
+    metadata:
+      labels:
+        app: easyworker-windows
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: <node-name>
+      # Only needed if the image comes from a private registry.
+      imagePullSecrets:
+        - name: <registry-credentials>
+      containers:
+        - name: windows
+          image: <registry>/vm-images/easyworker-windows:v1.2.1
+          imagePullPolicy: IfNotPresent
+
+          # NOT privileged. KVM is delivered by the device plugin: requesting
+          # squat.ai/kvm makes kubelet/runc create /dev/kvm and add the device
+          # cgroup allow rule for this container.
+          securityContext:
+            privileged: false
+            runAsUser: 0
+            allowPrivilegeEscalation: true
+            seccompProfile: { type: Unconfined }
+            appArmorProfile: { type: Unconfined }
+            capabilities:
+              add: ["NET_ADMIN","NET_RAW","SYS_ADMIN","SYS_NICE","MKNOD",
+                    "CHOWN","SETUID","SETGID","DAC_OVERRIDE","FOWNER","KILL"]
+
+          ports:
+            - { name: web, containerPort: 8006 }
+
+          env:
+            # Set a value to pre-authorize the worker (zero-touch, no claim);
+            # leave empty for the default random-code enrollment flow.
+            - { name: WORKER_TOKEN, value: "" }
+            - { name: VERSION, value: "win11" }
+            - { name: EDITION, value: "pro" }
+            - { name: CPU_CORES, value: "8" }        # guest vCPU count
+            - { name: RAM_SIZE, value: "32768M" }    # guest RAM
+            - { name: DISK_SIZE, value: "128G" }     # >= baked disk size
+            - { name: DISK_FMT, value: "qcow2" }
+            - { name: MANUAL, value: "N" }
+            - { name: SAMBA, value: "N" }
+
+          resources:
+            requests: { cpu: "8", memory: "32Gi" }
+            limits:
+              cpu: "8"
+              memory: "40Gi"
+              squat.ai/kvm: "1"        # <- the KVM device request
+
+          volumeMounts:
+            # /dev/net/tun is on the container runtime's default device
+            # allow-list, so it can be mounted without any capability.
+            - { name: devtun, mountPath: /dev/net/tun }
+      volumes:
+        - name: devtun
+          hostPath: { path: /dev/net/tun, type: CharDevice }
+---
+# Worker Connect API (WorkerService + WorkerEnroll).
+apiVersion: v1
+kind: Service
+metadata:
+  name: easyworker-windows
+  namespace: temp
+  labels:
+    app: easyworker-windows
+spec:
+  selector:
+    app: easyworker-windows
+  ports:
+    - { name: http, port: 80, targetPort: 48080 }
+    - { name: worker, port: 48080, targetPort: 48080 }
+  type: ClusterIP
+---
+# SSH into the guest (read the enrollment code from worker.state, or operate
+# the VM). docker/admin.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssh-easyworker-windows
+  namespace: temp
+  labels:
+    app: easyworker-windows
+spec:
+  selector:
+    app: easyworker-windows
+  ports:
+    - { name: ssh, port: 22, targetPort: 22 }
+  type: ClusterIP
+---
+# noVNC console (port 8006 inside the VM).
+apiVersion: v1
+kind: Service
+metadata:
+  name: easyworker-windows-novnc
+  namespace: temp
+  labels:
+    app: easyworker-windows
+spec:
+  selector:
+    app: easyworker-windows
+  ports:
+    - { name: web, port: 80, targetPort: 8006 }
+  type: ClusterIP

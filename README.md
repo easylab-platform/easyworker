@@ -72,6 +72,10 @@ internal/shellh/                 builtin shell (interp + exec/open handlers,
 internal/jobsvc/                 manager (ring + fanout) + sqlite store
 internal/filesvc/                binary-safe file ops, workspace containment
 internal/service.go              Connect handlers (unary + WatchJob streaming)
+k8s/easyworker.yaml              standalone host-runner Deployment (linux)
+k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VMs)
+k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
+k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
 ```
 
 ## Regenerate
@@ -127,6 +131,129 @@ Other env: `WORKER_REQUIRE_AUTH=0` disables auth (dev only).
 `kubectl apply -f k8s/easyworker.yaml` deploys to the `temp` namespace
 (emptyDir `/data` for the history DB). Local bare-metal deployment is
 intentionally NOT supported — container + k8s only.
+
+## Windows / macOS VM sandboxes without `privileged: true`
+
+easyworker also runs inside full **Windows / macOS VMs** (dockur-style golden
+images) so a sandbox can build native desktop apps. Those workloads need KVM,
+and under **cgroup v2** the device controller is a BPF allow-list: Kubernetes
+has no per-device field, so a container normally cannot open `/dev/kvm` unless
+it is `privileged: true` (which also grants every other device). Mounting
+`/dev/kvm` as a hostPath is not enough — the open still returns `EPERM`.
+
+The fix is a **device plugin**. `k8s/generic-device-plugin.yaml` deploys the
+upstream [squat/generic-device-plugin](https://github.com/squat/generic-device-plugin)
+mirrored into the internal registry; it advertises `squat.ai/kvm` and, on
+`Allocate`, returns a `DeviceSpec` for `/dev/kvm` with permissions `rwm`.
+kubelet/runc then create the device node **and** add the device-cgroup allow
+rule for that container only. Nothing is installed on the host — the plugin
+only reads `/dev/kvm` and writes its socket into kubelet's
+`/var/lib/kubelet/device-plugins` directory.
+
+The VM pods then request it as an extended resource and stay unprivileged:
+
+```yaml
+securityContext:
+  privileged: false
+  capabilities:
+    add: ["NET_ADMIN","SYS_ADMIN","MKNOD", ...]   # no privileged, no ALL
+resources:
+  limits:
+    squat.ai/kvm: "1"        # <- delivers /dev/kvm
+volumeMounts:
+  - { name: devtun, mountPath: /dev/net/tun }     # on the default allow-list
+```
+
+Apply order:
+
+```sh
+kubectl apply -f k8s/generic-device-plugin.yaml
+kubectl apply -f k8s/easyworker-windows.yaml
+kubectl apply -f k8s/easyworker-macos.yaml
+```
+
+Full, ready-to-use examples live in `k8s/easyworker-windows.yaml` and
+`k8s/easyworker-macos.yaml` (worker API / SSH / noVNC Services included).
+
+### Token without a sidecar
+
+In-cluster sandboxes get `WORKER_TOKEN` from the launcher. For a VM the token
+must cross into the guest, which cannot read the pod's environment. Instead the
+VM images bake a tiny bridge:
+
+- `/run/start.sh` (the dockur startup hook) writes `$WORKER_TOKEN` to
+  `/run/shm/token`;
+- nginx serves it on **`:8090`**, restricted to the guest subnet
+  (`allow 172.30.0.0/24`, `deny all`, `no-store`). No Service exposes `:8090`;
+- the guest launcher fetches `http://host.lan:8090/token` before starting the
+  worker.
+
+Semantics (controlled purely by the pod's `WORKER_TOKEN` env):
+
+| `WORKER_TOKEN` | worker states | enrollment |
+| --- | --- | --- |
+| non-empty | pre-authorized | none — ready to serve |
+| empty | unclaimed | mints a random one-time code to claim |
+
+Because the token file is empty when `WORKER_TOKEN` is unset, the same image
+supports both zero-touch pre-authorization and the normal claim flow.
+
+### Writing your own VM image
+
+A minimal image only needs the device-plugin contract from the pod and the
+token bridge above. Two files are added to a qemu/dockur base:
+
+`/run/start.sh` (the dockur startup hook, sourced before nginx starts):
+
+```bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf '%s' "${WORKER_TOKEN:-}" > /run/shm/token
+chmod 644 /run/shm/token 2>/dev/null || true
+return 0
+```
+
+`/etc/nginx/conf.d/00-token.conf` (nginx's base config already includes
+`conf.d/*.conf`; dockur's `server.sh` only rewrites `sites-enabled/web.conf`):
+
+```nginx
+server {
+    listen 8090;
+    server_tokens off;
+    allow 127.0.0.1;
+    allow 172.30.0.0/24;   # guest (QEMU user-net) subnet
+    deny all;
+    location = /token {
+        alias /run/shm/token;
+        default_type text/plain;
+        add_header Cache-Control "no-store" always;
+    }
+    location / { return 404; }
+}
+```
+
+```dockerfile
+FROM <qemu base with dockur scripts>
+COPY --chmod=755 ./disk /storage/            # pre-baked guest disk (fat)
+COPY --chmod=644 ./00-token.conf /etc/nginx/conf.d/00-token.conf
+COPY --chmod=755 ./start.sh /run/start.sh    # writes $WORKER_TOKEN to /run/shm/token
+```
+
+The guest launcher (installed in the image) starts easyworker with
+`WORKER_TOKEN` set from the fetched token, so the pod's `WORKER_TOKEN` env is
+the single knob.
+
+Alternatives considered:
+
+- **TCG (software emulation, `KVM=N`)**: needs no plugin at all but is ~10×
+  slower — unusable for real builds.
+- **Self-built KVM device plugin**: works and is tiny, but the upstream
+  generic-device-plugin covers the same case with no code to maintain.
+- **Dynamic Resource Allocation (DRA)**: cleaner on paper (a `DeviceClass` +
+  `ResourceSlice` with an `extendedResourceName`), and containerd here has CDI
+  enabled. It is **not** usable from a namespaced ServiceAccount: publishing
+  `ResourceSlice`/`DeviceClass` is cluster-scoped and returns `403`. DRA would
+  require cluster-admin RBAC, so the device plugin is the pragmatic choice.
 
 ## Multi-platform (windows / macos host-run)
 

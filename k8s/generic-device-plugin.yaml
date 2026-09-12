@@ -1,0 +1,73 @@
+# generic-device-plugin: admit /dev/kvm to the node as extended resource
+# squat.ai/kvm, so VM workloads (windows/macos easyworker) can use KVM while
+# running with privileged: false.
+#
+# Background: under cgroup v2 the kubelet/containerd device controller is a BPF
+# allow-list, and Kubernetes has no per-device field. A privileged container is
+# therefore the only way to open /dev/kvm *by default*. A device plugin fixes
+# this precisely: on Allocate it returns a DeviceSpec for /dev/kvm with
+# permissions "rwm"; kubelet/runc then create the device node AND add the device
+# cgroup allow rule for that container only.
+#
+# Nothing has to be installed on the host: the plugin only reads /dev/kvm and
+# writes its Unix socket into kubelet's device-plugins directory.
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: generic-device-plugin
+  namespace: temp
+  labels:
+    app: generic-device-plugin
+spec:
+  selector:
+    matchLabels:
+      app: generic-device-plugin
+  template:
+    metadata:
+      labels:
+        app: generic-device-plugin
+    spec:
+      # Optional: restrict to the nodes that actually expose /dev/kvm; omit to
+      # run everywhere.
+      nodeSelector:
+        kubernetes.io/hostname: <node-name>
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      # Only needed if the image comes from a private registry.
+      imagePullSecrets:
+        - name: <registry-credentials>
+      containers:
+        - name: plugin
+          # Upstream: squat/generic-device-plugin
+          # (github.com/squat/generic-device-plugin), mirrored into your registry.
+          image: <registry>/generic-device-plugin:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --domain=squat.ai
+            # "count" is how many pods may hold KVM concurrently on the node.
+            - '--device={"name": "kvm", "groups": [{"count": 8, "paths": [{"path": "/dev/kvm"}]}]}'
+          ports:
+            - name: metrics
+              containerPort: 8080
+          securityContext:
+            # Needed only to read /dev/kvm and write kubelet's socket dir.
+            privileged: true
+          volumeMounts:
+            - name: device-plugins
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: dev
+              mountPath: /dev
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 128Mi }
+      volumes:
+        - name: device-plugins
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: Directory
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
