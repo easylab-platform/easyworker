@@ -76,6 +76,8 @@ k8s/easyworker.yaml              standalone host-runner Deployment (linux)
 k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VMs)
 k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
 k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
+k8s/easyworker-linux-desktop.yaml  labwc desktop worker, no KVM (+ noVNC Service)
+images/linux-desktop/            Dockerfile + entrypoint for the desktop sandbox
 ```
 
 ## Regenerate
@@ -254,6 +256,64 @@ Alternatives considered:
   enabled. It is **not** usable from a namespaced ServiceAccount: publishing
   `ResourceSlice`/`DeviceClass` is cluster-scoped and returns `403`. DRA would
   require cluster-admin RBAC, so the device plugin is the pragmatic choice.
+
+## Linux desktop sandbox (labwc, no KVM, no code change)
+
+For **GUI program testing** on Linux there is no VM involved: the container is
+the sandbox. `images/linux-desktop/` builds a Debian trixie image running a
+headless wlroots compositor (**labwc**) with **wayvnc** + **noVNC** for a
+browser view and the easyworker binary serving the Worker API. No KVM, no
+device plugin, no `privileged`, no sidecar — the token is a plain
+`WORKER_TOKEN` env var.
+
+```
+:48080  Worker API (WorkerService + WorkerEnroll)
+:5900   VNC      (wayvnc)
+:6080   noVNC    (websockify, open — no auth by design)
+```
+
+Build (stages the linux/amd64 worker binary and pushes to forgejo):
+
+```sh
+scripts/build-all.sh                                   # builds dist/
+WORKER_BIN=dist/easyworker-linux-amd64 \
+  ./images/linux-desktop/build.sh                      # -> <registry>/root/easyworker-linux-desktop:v1.0.0
+kubectl apply -f k8s/easyworker-linux-desktop.yaml
+```
+
+The image is deliberately minimal: compositor + terminal + fonts + the GTK/GL
+runtime libraries a GUI binary links against. Extra tooling (Chromium, build
+chains, browsers) is installed by the caller — either baked into a derived
+image or fetched into the workspace at runtime.
+
+### The display-environment catch
+
+easyworker runs every job through its builtin shell with a **strict job-env
+allowlist** (`cmd/easyworker/main.go`, `jobEnv()`): only proxy/registry knobs
+plus `PATH`/`HOME`/`TMPDIR`/`USER` are passed through. `WAYLAND_DISPLAY`,
+`XDG_RUNTIME_DIR` and `DISPLAY` are **not** on that allowlist, so a bare
+`myapp` launched via `Execute` cannot see the compositor. Two ways to fix it
+without touching worker code:
+
+- **Per-job env** — pass the three variables on `ExecuteRequest.env`:
+
+  ```
+  {"command":"./myapp",
+   "env":{"XDG_RUNTIME_DIR":"/tmp/xdg","WAYLAND_DISPLAY":"wayland-0","DISPLAY":":0"}}
+  ```
+
+- **`gui-run` wrapper** — the image prepends `/opt/session-bin` to `PATH`
+  (`PATH` *is* allowlisted), and ships `gui-run <program> [args]`, which
+  restores the session variables and execs the program:
+
+  ```
+  {"command":"gui-run ./myapp --flag"}
+  ```
+
+XWayland is started on demand by labwc (no explicit `Xwayland :0` line is
+needed; an eager one races labwc's own socket and fails). Software rendering
+(`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`, `WLR_RENDERER=pixman`)
+covers GTK/Qt/Electron/Flutter-desktop clients without a GPU.
 
 ## Multi-platform (windows / macos host-run)
 
