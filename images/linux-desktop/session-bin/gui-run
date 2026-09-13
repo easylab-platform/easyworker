@@ -1,19 +1,18 @@
 #!/bin/sh
-# Run a GUI program on the sandbox desktop.
+# Run a GUI program on the sandbox desktop (pure Wayland).
 #
-# The worker's job environment is allowlisted and drops the Wayland/X11
+# The worker's job environment is allowlisted and drops the Wayland session
 # variables, so a bare `myapp` started through Execute would not find the
-# compositor. This wrapper restores the session variables and execs the
-# program, so `gui-run myapp --flag` works without the caller injecting env.
+# compositor. This wrapper restores them and execs the program, so
+# `gui-run myapp --flag` works without the caller injecting env.
 #
-# Prefer passing the three variables explicitly via ExecuteRequest.env when
-# you control the caller; gui-run is the zero-configuration fallback.
+# Prefer passing the variables explicitly via ExecuteRequest.env when you
+# control the caller; gui-run is the zero-configuration fallback.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg}"
 if [ -z "${WAYLAND_DISPLAY:-}" ]; then
   WAYLAND_DISPLAY="$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep '^wayland' | head -n1 || true)"
 fi
 export WAYLAND_DISPLAY
-export DISPLAY="${DISPLAY:-:0}"
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
 

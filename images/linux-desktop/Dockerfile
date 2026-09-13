@@ -2,7 +2,9 @@
 # easyworker Linux labwc desktop sandbox: a headless wlroots compositor with
 # wayvnc + noVNC for a browser view, and the easyworker Worker API on :48080.
 #
-# No KVM, no privileged mode, no sidecar; the sandbox is the container.
+# Pure Wayland: no Xwayland, no DISPLAY, no X11 client libraries are required
+# by the session itself. (GTK/Qt may still pull in some X11 libs transitively,
+# but nothing in this image enables or uses them.)
 # Build context must contain ./easyworker (the linux/amd64 v0.5.2 binary);
 # build.sh stages it before calling buildctl.
 ARG REGISTRY=forgejo.develop.10.199.64.20.nip.io/root
@@ -20,12 +22,13 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
     && sed -i 's|http://deb.debian.org/debian|http://mirrors.aliyun.com/debian|g' /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-         tini labwc wayvnc foot xwayland \
+         tini labwc wayvnc foot \
          novnc websockify \
          fonts-dejavu fonts-noto-cjk \
          libgtk-3-0 libglib2.0-0 \
-         libx11-6 libxcb1 libxkbcommon0 libxkbcommon-x11-0 \
+         libwayland-client0 libxkbcommon0 \
          libegl1 libgles2 libgl1 libgbm1 libgl1-mesa-dri mesa-utils \
+         wayland-utils \
          ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

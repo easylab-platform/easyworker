@@ -1,6 +1,19 @@
 <?xml version="1.0"?>
+<!--
+  labwc session config for the easyworker desktop sandbox.
+
+  Pure Wayland: no DISPLAY is exported and no X11 session is started.
+  `xwaylandPersistence=no` (already the default with wlroots >= 0.18.2) keeps
+  any Xwayland server strictly lazy — it is never spawned unless an X11
+  client connects, and pure-Wayland clients never trigger it.
+
+  Note: Debian's labwc package hard-depends on the `xwayland` *binary* (it
+  needs the path at init even in lazy mode), so the file stays installed; it
+  simply never runs for a Wayland-only workload.
+-->
 <openbox_config xmlns="http://openbox.org/3.4/rc">
   <core>
+    <xwaylandPersistence>no</xwaylandPersistence>
     <xkb>
       <layout>us</layout>
     </xkb>

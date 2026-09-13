@@ -76,7 +76,7 @@ k8s/easyworker.yaml              standalone host-runner Deployment (linux)
 k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VMs)
 k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
 k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
-k8s/easyworker-linux-desktop.yaml  labwc desktop worker, no KVM (+ noVNC Service)
+k8s/easyworker-linux-desktop.yaml  labwc desktop worker, pure Wayland (+ noVNC Service)
 images/linux-desktop/            Dockerfile + entrypoint for the desktop sandbox
 ```
 
@@ -257,7 +257,7 @@ Alternatives considered:
   `ResourceSlice`/`DeviceClass` is cluster-scoped and returns `403`. DRA would
   require cluster-admin RBAC, so the device plugin is the pragmatic choice.
 
-## Linux desktop sandbox (labwc, no KVM, no code change)
+## Linux desktop sandbox (labwc, pure Wayland, no KVM)
 
 For **GUI program testing** on Linux there is no VM involved: the container is
 the sandbox. `images/linux-desktop/` builds a Debian trixie image running a
@@ -265,6 +265,11 @@ headless wlroots compositor (**labwc**) with **wayvnc** + **noVNC** for a
 browser view and the easyworker binary serving the Worker API. No KVM, no
 device plugin, no `privileged`, no sidecar — the token is a plain
 `WORKER_TOKEN` env var.
+
+It is **pure Wayland**: no Xwayland, no `DISPLAY`, no X11 client workarounds.
+Wayland-native clients (GTK3/GTK4, Qt5/Qt6 with the Wayland plugin, foot,
+Electron with `--ozone-platform=wayland`, Flutter/GTK desktop) run directly;
+X11-only programs are out of scope for this image.
 
 ```
 :48080  Worker API (WorkerService + WorkerEnroll)
@@ -281,25 +286,25 @@ WORKER_BIN=dist/easyworker-linux-amd64 \
 kubectl apply -f k8s/easyworker-linux-desktop.yaml
 ```
 
-The image is deliberately minimal: compositor + terminal + fonts + the GTK/GL
-runtime libraries a GUI binary links against. Extra tooling (Chromium, build
-chains, browsers) is installed by the caller — either baked into a derived
-image or fetched into the workspace at runtime.
+The image is deliberately minimal: compositor + terminal + fonts + the
+Wayland/EGL/GTK runtime libraries a GUI binary links against. Extra tooling
+(Chromium, build chains, browsers) is installed by the caller — either baked
+into a derived image or fetched into the workspace at runtime.
 
 ### The display-environment catch
 
 easyworker runs every job through its builtin shell with a **strict job-env
 allowlist** (`cmd/easyworker/main.go`, `jobEnv()`): only proxy/registry knobs
-plus `PATH`/`HOME`/`TMPDIR`/`USER` are passed through. `WAYLAND_DISPLAY`,
-`XDG_RUNTIME_DIR` and `DISPLAY` are **not** on that allowlist, so a bare
-`myapp` launched via `Execute` cannot see the compositor. Two ways to fix it
-without touching worker code:
+plus `PATH`/`HOME`/`TMPDIR`/`USER` are passed through. `WAYLAND_DISPLAY` and
+`XDG_RUNTIME_DIR` are **not** on that allowlist, so a bare `myapp` launched via
+`Execute` cannot see the compositor. Two ways to fix it without touching worker
+code:
 
-- **Per-job env** — pass the three variables on `ExecuteRequest.env`:
+- **Per-job env** — pass the variables on `ExecuteRequest.env`:
 
   ```
   {"command":"./myapp",
-   "env":{"XDG_RUNTIME_DIR":"/tmp/xdg","WAYLAND_DISPLAY":"wayland-0","DISPLAY":":0"}}
+   "env":{"XDG_RUNTIME_DIR":"/tmp/xdg","WAYLAND_DISPLAY":"wayland-0"}}
   ```
 
 - **`gui-run` wrapper** — the image prepends `/opt/session-bin` to `PATH`
@@ -310,10 +315,8 @@ without touching worker code:
   {"command":"gui-run ./myapp --flag"}
   ```
 
-XWayland is started on demand by labwc (no explicit `Xwayland :0` line is
-needed; an eager one races labwc's own socket and fails). Software rendering
-(`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`, `WLR_RENDERER=pixman`)
-covers GTK/Qt/Electron/Flutter-desktop clients without a GPU.
+Software rendering (`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`,
+`WLR_RENDERER=pixman`) covers GPU-less clients.
 
 ## Multi-platform (windows / macos host-run)
 

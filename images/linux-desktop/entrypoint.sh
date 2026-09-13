@@ -14,9 +14,9 @@ set -Eeuo pipefail
 #   easyworker :48080   (token from $WORKER_TOKEN)
 #
 # The worker's job env is a strict allowlist (see cmd/easyworker/main.go
-# jobEnv): WAYLAND_DISPLAY / XDG_RUNTIME_DIR / DISPLAY are NOT passed through.
-# GUI programs therefore need either per-job env via ExecuteRequest.env, or
-# the `gui-run` wrapper on PATH (this image ships it).
+# jobEnv): WAYLAND_DISPLAY / XDG_RUNTIME_DIR are NOT passed through. GUI
+# programs therefore need either per-job env via ExecuteRequest.env, or the
+# `gui-run` wrapper on PATH (this image ships it).
 
 export XDG_RUNTIME_DIR="/tmp/xdg"
 export WLR_BACKENDS=headless
@@ -48,14 +48,6 @@ done
 WAYLAND_SOCKET="$(ls "$XDG_RUNTIME_DIR" | grep '^wayland' | head -n1)"
 export WAYLAND_DISPLAY="$WAYLAND_SOCKET"
 
-# X11-only GUI programs: labwc starts its own XWayland on demand; only start
-# one explicitly if no display 0 is already present (avoids a stale lock).
-if [ ! -e /tmp/.X11-unix/X0 ] && [ ! -e /tmp/.X0-lock ]; then
-  Xwayland :0 -rootless -noreset >/tmp/xwayland.log 2>&1 &
-  XWAYLAND_PID=$!
-fi
-export DISPLAY=:0
-
 # --- remote view ----------------------------------------------------------
 wayvnc 0.0.0.0 5900 >/tmp/wayvnc.log 2>&1 &
 WAYVNC_PID=$!
@@ -64,7 +56,7 @@ websockify --web /usr/share/novnc 6080 localhost:5900 >/tmp/websockify.log 2>&1 
 WS_PID=$!
 
 cleanup() {
-  kill "$WS_PID" "$WAYVNC_PID" "$XWAYLAND_PID" "$LABWC_PID" "${WORKER_PID:-}" 2>/dev/null || true
+  kill "$WS_PID" "$WAYVNC_PID" "$LABWC_PID" "${WORKER_PID:-}" 2>/dev/null || true
 }
 trap cleanup TERM INT
 
