@@ -86,5 +86,5 @@ spec:
   selector:
     app: easyworker-linux-desktop
   ports:
-    - { name: novnc, port: 6080, targetPort: 6080 }
+    - { name: novnc, port: 80, targetPort: 6080 }
   type: ClusterIP
