@@ -77,7 +77,9 @@ k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VM
 k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
 k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
 k8s/easyworker-linux-desktop.yaml  labwc desktop worker, pure Wayland (+ noVNC Service)
+k8s/easyworker-android.yaml      BlissOS Android 13 worker under KVM (+ ws-scrcpy)
 images/linux-desktop/            Dockerfile + entrypoint for the desktop sandbox
+images/android-blessos/          Dockerfile + golden-construct + entrypoint for Android
 ```
 
 ## Regenerate
@@ -317,6 +319,58 @@ code:
 
 Software rendering (`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`,
 `WLR_RENDERER=pixman`) covers GPU-less clients.
+
+## Android sandbox (BlissOS under KVM, ws-scrcpy)
+
+`images/android-blessos/` packages a **BlissOS 16** (Android 13, x86_64) golden
+disk that boots under QEMU/KVM, with **ws-scrcpy** as the browser screen
+instead of noVNC. Two things differ from the Windows/macOS VM workers:
+
+1. **The worker runs on the host side.** Android is a bionic userland, so the
+   static linux/amd64 Go worker cannot run *inside* the guest; instead the
+   container hosts the worker and drives the guest over **adb**
+   (`adb install`, `adb shell am start`, `adb shell input`, …). A job installs
+   and exercises an x86_64 APK exactly as if it were a CI step.
+2. **KVM is still required** (`squat.ai/kvm:1`, `privileged: false`), same as
+   the VM workers. The golden also bakes in adbd-over-TCP (5555) and a static
+   dropbear sshd (22).
+
+```
+:48080  Worker API  (WorkerService + WorkerEnroll)
+:8000   ws-scrcpy   (open, no auth — ClusterIP only)
+        QEMU -> guest adbd :5555  (adb; used by jobs)
+```
+
+Build the golden + image (the golden is derived offline from the official
+BlissOS 16 FOSS ISO, mirroring anyvm-org/blissos-builder's offline-construct:
+unsquash/extract `system.img`, bake dropbear + init rc + adbd props into it,
+GRUB-install, convert to qcow2):
+
+```sh
+scripts/build-all.sh                                   # dist/ worker binaries
+# golden construction needs a privileged pod with loop/kpartx (nbd module is
+# absent on this node); see images/android-blessos/ for the exact steps.
+WORKER_BIN=dist/easyworker-linux-amd64 \
+  ./images/android-blessos/build.sh                    # -> <registry>/easyworker-android-blessos:v1.0.0
+kubectl apply -f k8s/easyworker-android.yaml
+```
+
+Job examples:
+
+```
+adb install -r /workspace/app-x86_64.apk
+adb shell monkey -p <pkg> -c android.intent.category.LAUNCHER 1
+adb shell pm list packages -3
+```
+
+Notes:
+
+- **APKs must be x86_64** — BlissOS FOSS ships no ARM translation layer.
+- The guest is Android 13 (BlissOS 16). BlissOS 18 (Android 15, `voyager-x86`)
+  exists in source but has no published ISO yet, so it would require a full
+  AOSP build to adopt.
+- ws-scrcpy is unencrypted and unauthenticated (upstream's own warning); it is
+  ClusterIP-only.
 
 ## Multi-platform (windows / macos host-run)
 
