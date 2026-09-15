@@ -76,6 +76,7 @@ k8s/easyworker.yaml              standalone host-runner Deployment (linux)
 k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VMs)
 k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
 k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
+k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 2 vCPU / 8 GiB
 k8s/easyworker-linux-desktop.yaml  labwc desktop worker, pure Wayland (+ noVNC Service)
 k8s/easyworker-android.yaml      BlissOS Android 13 worker under KVM (+ ws-scrcpy)
 images/linux-desktop/            Dockerfile + entrypoint for the desktop sandbox
