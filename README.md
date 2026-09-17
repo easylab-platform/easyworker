@@ -79,6 +79,8 @@ k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
 k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 2 vCPU / 8 GiB
 k8s/easyworker-linux-desktop.yaml  labwc desktop worker, pure Wayland (+ noVNC Service)
 k8s/easyworker-android.yaml      BlissOS Android 13 worker under KVM (+ ws-scrcpy)
+k8s/easyworker-blissos.yaml      Android build toolchain + BlissOS guest + noVNC, one container
+images/blissos-dev/              Dockerfile + entrypoint + noVNC front for the above
 images/linux-desktop/            Dockerfile + entrypoint for the desktop sandbox
 images/android-blessos/          Dockerfile + golden-construct + entrypoint for Android
 ```
@@ -372,6 +374,53 @@ Notes:
   AOSP build to adopt.
 - ws-scrcpy is unencrypted and unauthenticated (upstream's own warning); it is
   ClusterIP-only.
+
+## Android dev sandbox (toolchain + BlissOS guest + noVNC in one container)
+
+`images/blissos-dev/` is a self-contained Android **development** sandbox: the
+container carries the build toolchain **and** the KVM-accelerated BlissOS guest,
+so a single job can build an APK and immediately install/run it in the guest.
+
+```
+:48080  Worker API  (WorkerService + WorkerEnroll)   host side
+:8006   noVNC       (QEMU VNC -> websocket -> nginx -> noVNC static)
+:5555   hostfwd to the guest adbd (internal; used by adb/jobs)
+```
+
+Toolchain baked in: **JDK 21**, **Gradle 8.13**, **Android SDK**
+(`platform-tools`, `platforms;android-35`, `build-tools;35.0.0`), plus
+`qemu-system-x86`/`qemu-utils` and `novnc`/`nginx-light`. `privileged: false`;
+KVM comes from the device plugin, same as the other VM workers.
+
+The worker runs on the host side (Android cannot run the linux/amd64 Go worker)
+and drives the guest over `adb`. Because the worker's job environment is a strict
+allowlist (only `PATH`/`HOME`/`TMPDIR`/`USER` and proxies survive), `ANDROID_HOME`
+never reaches a job — the image ships a global Gradle init script that writes
+`sdk.dir` into `local.properties`, so plain `gradle assembleDebug` works in jobs.
+
+```sh
+scripts/build-all.sh                        # dist/ worker binaries
+./images/blissos-dev/build.sh               # -> <registry>/easyworker-blissos:v1.0.0
+kubectl apply -f k8s/easyworker-blissos.yaml
+```
+
+One job, full loop (verified end to end):
+
+```
+gradle --no-daemon assembleDebug            # builds app-debug.apk in the container
+adb -s 127.0.0.1:5555 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s 127.0.0.1:5555 shell wm dismiss-keyguard
+adb -s 127.0.0.1:5555 shell am start -n <pkg>/.MainActivity
+adb -s 127.0.0.1:5555 shell uiautomator dump /sdcard/u.xml   # assert the UI rendered
+```
+
+Notes:
+
+- **APKs must be x86_64** — BlissOS FOSS ships no ARM translation layer.
+- The guest disk is a writable overlay on `/vm/golden.qcow2`, so each pod starts
+  clean; the golden itself is read-only.
+- `ANDROID_MEM`/`ANDROID_CPUS` size the guest only; size the pod's requests above
+  that so the toolchain has room too.
 
 ## Multi-platform (windows / macos host-run)
 

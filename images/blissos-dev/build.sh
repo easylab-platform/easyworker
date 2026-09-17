@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Build and push the easyworker BlissOS dev sandbox image.
+#
+#   ./images/blissos-dev/build.sh
+#
+# The image carries BOTH an Android build toolchain (JDK 21, Gradle, Android
+# SDK) and a KVM-accelerated BlissOS (Android 13, x86_64) guest with noVNC, so
+# a single job can build an APK and install/run it in the guest over adb.
+#
+# Prerequisites:
+#   * dist/easyworker-linux-amd64            (scripts/build-all.sh)
+#   * images/android-blessos/golden.qcow2    (see android-blessos/golden-construct.sh)
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${DIR}/../.." && pwd)"
+
+REGISTRY="${REGISTRY:-forgejo.develop.10.199.64.20.nip.io}"
+NAMESPACE="${NAMESPACE:-root}"
+NAME="${NAME:-easyworker-blissos}"
+TAG="${TAG:-v1.0.0}"
+DEST="${REGISTRY}/${NAMESPACE}/${NAME}:${TAG}"
+BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"
+PROXY="${PROXY:-http://mihomo.develop.svc.cluster.local:7890}"
+WORKER_BIN="${WORKER_BIN:-${ROOT}/dist/easyworker-linux-amd64}"
+GOLDEN="${GOLDEN:-${ROOT}/images/android-blessos/golden.qcow2}"
+
+for f in "${WORKER_BIN}" "${GOLDEN}"; do
+  [ -e "$f" ] || { echo "missing $f" >&2; exit 1; }
+done
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "${WORK}"' EXIT
+cp "${DIR}/Dockerfile" "${DIR}/entrypoint.sh" "${DIR}/novnc.conf" "${DIR}/sdk-init.gradle" "${WORK}/"
+cp "${WORKER_BIN}" "${WORK}/easyworker"
+cp "${GOLDEN}" "${WORK}/golden.qcow2"
+
+echo "Building ${NAME} -> ${DEST} (buildkitd=${BUILDKIT})"
+buildctl --addr "${BUILDKIT}" build \
+  --frontend dockerfile.v0 \
+  --local "context=${WORK}" \
+  --local "dockerfile=${WORK}" \
+  --opt "filename=Dockerfile" \
+  --opt "build-arg:REGISTRY=${REGISTRY}/root" \
+  --opt "build-arg:HTTP_PROXY=${PROXY}" \
+  --opt "build-arg:HTTPS_PROXY=${PROXY}" \
+  --output "type=oci,dest=${WORK}/image.oci,compression=zstd" \
+  --progress plain
+
+echo "Pushing to ${DEST}"
+mkdir -p "${WORK}/oci" && tar -xf "${WORK}/image.oci" -C "${WORK}/oci"
+skopeo copy --src-tls-verify=false --dest-tls-verify=false \
+  --dest-creds "${FORGEJO_USER:-root}:${FORGEJO_PASS:-devpassword}" \
+  "oci:${WORK}/oci" "docker://${DEST}"
+
+echo "Verifying push:"
+skopeo inspect --creds "${FORGEJO_USER:-root}:${FORGEJO_PASS:-devpassword}" \
+  --tls-verify=false "docker://${DEST}" >/dev/null 2>&1 \
+  && echo "OK ${DEST}" \
+  || echo "inspect failed for ${DEST} (image may still be present)"

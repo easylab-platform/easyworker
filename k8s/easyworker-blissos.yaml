@@ -1,0 +1,124 @@
+# easyworker BlissOS dev sandbox — Android build toolchain + KVM Android guest
+# + noVNC, all in ONE container.
+#
+# Unlike the other VM workers, the toolchain lives in the same container as the
+# guest: a job can `gradle assembleDebug` and then `adb install` the APK into the
+# KVM-accelerated BlissOS (Android 13, x86_64) guest, closing the build/test loop
+# without an external CI. The easyworker binary runs on the host side (Android is
+# a bionic userland and cannot run the linux/amd64 Go worker) and drives the
+# guest over adb.
+#
+# privileged: false — KVM comes from the squat.ai/kvm device plugin, exactly like
+# the Windows/macOS VM workers.
+#
+# Endpoints (inside the pod):
+#   :48080  Worker API   (WorkerService + WorkerEnroll)
+#   :8006   noVNC        (QEMU VNC -> websocket -> nginx -> noVNC static)
+#   :5555   hostfwd to the guest adbd (internal; used by adb/jobs)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: easyworker-blissos
+  namespace: temp
+  labels:
+    app: easyworker-blissos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: easyworker-blissos
+  template:
+    metadata:
+      labels:
+        app: easyworker-blissos
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: <node-name>
+      # Only needed if the image comes from a private registry.
+      imagePullSecrets:
+        - name: <registry-credentials>
+      containers:
+        - name: blissos
+          image: <registry>/vm-images/easyworker-blissos:v1.0.0
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            privileged: false
+            runAsUser: 0
+            allowPrivilegeEscalation: true
+            seccompProfile: { type: Unconfined }
+            appArmorProfile: { type: Unconfined }
+            capabilities:
+              add: ["NET_ADMIN","NET_RAW","SYS_ADMIN","SYS_NICE","MKNOD",
+                    "CHOWN","SETUID","SETGID","DAC_OVERRIDE","FOWNER","KILL"]
+
+          ports:
+            - { name: worker, containerPort: 48080 }
+            - { name: novnc, containerPort: 8006 }
+            - { name: vnc, containerPort: 5900 }
+
+          env:
+            # Set a value to pre-authorize the worker (zero-touch, no claim);
+            # leave empty for the default random-code enrollment flow.
+            - { name: WORKER_TOKEN, value: "" }
+            - { name: WORKER_PORT, value: "48080" }
+            - { name: WORKER_WORKSPACE, value: "/workspace" }
+            - { name: WORKER_DB, value: "/data/jobs.db" }
+            # Guest sizing (the container also carries the build toolchain, so
+            # leave headroom above the guest's own allocation).
+            - { name: ANDROID_MEM, value: "4096" }
+            - { name: ANDROID_CPUS, value: "4" }
+
+          readinessProbe:
+            httpGet: { path: /healthz, port: 48080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 48080 }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+
+          resources:
+            requests: { cpu: "4", memory: "8Gi" }
+            limits:
+              cpu: "8"
+              memory: "16Gi"
+              squat.ai/kvm: "1"        # <- the KVM device request
+
+          volumeMounts:
+            - { mountPath: /dev/net/tun, name: devtun }
+      volumes:
+        - name: devtun
+          hostPath: { path: /dev/net/tun, type: CharDevice }
+---
+# Worker Connect API (WorkerService + WorkerEnroll).
+apiVersion: v1
+kind: Service
+metadata:
+  name: easyworker-blissos
+  namespace: temp
+  labels:
+    app: easyworker-blissos
+spec:
+  selector:
+    app: easyworker-blissos
+  ports:
+    - { name: http, port: 80, targetPort: 48080 }
+    - { name: worker, port: 48080, targetPort: 48080 }
+  type: ClusterIP
+---
+# noVNC browser screen (open, no auth — ClusterIP only).
+apiVersion: v1
+kind: Service
+metadata:
+  name: easyworker-blissos-novnc
+  namespace: temp
+  labels:
+    app: easyworker-blissos
+spec:
+  selector:
+    app: easyworker-blissos
+  ports:
+    - { name: web, port: 80, targetPort: 8006 }
+  type: ClusterIP

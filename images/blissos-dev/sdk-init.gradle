@@ -1,0 +1,11 @@
+// The easyworker job environment is a strict allowlist, so ANDROID_HOME never
+// reaches a job. AGP resolves the SDK from local.properties as well; write it
+// on demand so both `gradle` and `./gradlew` work without extra env.
+gradle.beforeProject { p ->
+    try {
+        def f = new File(p.projectDir, "local.properties")
+        if (!f.exists()) {
+            f.text = "sdk.dir=/opt/android-sdk\n"
+        }
+    } catch (Exception ignored) { }
+}
