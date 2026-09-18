@@ -4,9 +4,6 @@
 /worker-bin/
 .last-image
 
-# android golden image (staged by images/blissos-dev/build.sh)
-images/blissos-dev/golden.qcow2
-
 # go
 go.work.sum
 *.db

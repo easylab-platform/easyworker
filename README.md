@@ -77,10 +77,8 @@ k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VM
 k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
 k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
 k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 2 vCPU / 8 GiB
-k8s/easyworker-linux-desktop.yaml  labwc desktop worker, pure Wayland (+ noVNC Service)
-k8s/easyworker-blissos.yaml      Android build toolchain + BlissOS guest + noVNC, one container
-images/blissos-dev/              Dockerfile + entrypoint + noVNC front + golden-construct
-images/linux-desktop/            Dockerfile + entrypoint for the desktop sandbox
+k8s/easyworker-android.yaml      Android build toolchain + emulator + noVNC, one container
+images/android/                  Dockerfile + entrypoint + noVNC front for the emulator sandbox
 ```
 
 ## Regenerate
@@ -260,83 +258,37 @@ Alternatives considered:
   `ResourceSlice`/`DeviceClass` is cluster-scoped and returns `403`. DRA would
   require cluster-admin RBAC, so the device plugin is the pragmatic choice.
 
-## Linux desktop sandbox (labwc, pure Wayland, no KVM)
+## Android sandbox (toolchain + official emulator + noVNC in one container)
 
-For **GUI program testing** on Linux there is no VM involved: the container is
-the sandbox. `images/linux-desktop/` builds a Debian trixie image running a
-headless wlroots compositor (**labwc**) with **wayvnc** + **noVNC** for a
-browser view and the easyworker binary serving the Worker API. No KVM, no
-device plugin, no `privileged`, no sidecar — the token is a plain
-`WORKER_TOKEN` env var.
-
-It is **pure Wayland**: no Xwayland, no `DISPLAY`, no X11 client workarounds.
-Wayland-native clients (GTK3/GTK4, Qt5/Qt6 with the Wayland plugin, foot,
-Electron with `--ozone-platform=wayland`, Flutter/GTK desktop) run directly;
-X11-only programs are out of scope for this image.
-
-```
-:48080  Worker API (WorkerService + WorkerEnroll)
-:5900   VNC      (wayvnc)
-:6080   noVNC    (websockify, open — no auth by design)
-```
-
-Build (stages the linux/amd64 worker binary and pushes to forgejo):
-
-```sh
-scripts/build-all.sh                                   # builds dist/
-WORKER_BIN=dist/easyworker-linux-amd64 \
-  ./images/linux-desktop/build.sh                      # -> <registry>/root/easyworker-linux-desktop:v1.0.0
-kubectl apply -f k8s/easyworker-linux-desktop.yaml
-```
-
-The image is deliberately minimal: compositor + terminal + fonts + the
-Wayland/EGL/GTK runtime libraries a GUI binary links against. Extra tooling
-(Chromium, build chains, browsers) is installed by the caller — either baked
-into a derived image or fetched into the workspace at runtime.
-
-### The display-environment catch
-
-easyworker runs every job through its builtin shell with a **strict job-env
-allowlist** (`cmd/easyworker/main.go`, `jobEnv()`): only proxy/registry knobs
-plus `PATH`/`HOME`/`TMPDIR`/`USER` are passed through. `WAYLAND_DISPLAY` and
-`XDG_RUNTIME_DIR` are **not** on that allowlist, so a bare `myapp` launched via
-`Execute` cannot see the compositor. Two ways to fix it without touching worker
-code:
-
-- **Per-job env** — pass the variables on `ExecuteRequest.env`:
-
-  ```
-  {"command":"./myapp",
-   "env":{"XDG_RUNTIME_DIR":"/tmp/xdg","WAYLAND_DISPLAY":"wayland-0"}}
-  ```
-
-- **`gui-run` wrapper** — the image prepends `/opt/session-bin` to `PATH`
-  (`PATH` *is* allowlisted), and ships `gui-run <program> [args]`, which
-  restores the session variables and execs the program:
-
-  ```
-  {"command":"gui-run ./myapp --flag"}
-  ```
-
-Software rendering (`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`,
-`WLR_RENDERER=pixman`) covers GPU-less clients.
-
-## Android dev sandbox (toolchain + BlissOS guest + noVNC in one container)
-
-`images/blissos-dev/` is a self-contained Android **development** sandbox: the
-container carries the build toolchain **and** the KVM-accelerated BlissOS guest,
-so a single job can build an APK and immediately install/run it in the guest.
+`images/android/` is a self-contained Android **development** sandbox: the
+container carries the build toolchain **and** the official Android Emulator with
+an Android 35 (Google APIs, x86_64) system image, so a single job can build an
+APK and immediately install/run it in the guest.
 
 ```
 :48080  Worker API  (WorkerService + WorkerEnroll)   host side
-:8006   noVNC       (QEMU VNC -> websocket -> nginx -> noVNC static)
-:5555   hostfwd to the guest adbd (internal; used by adb/jobs)
+:6080   noVNC       (Xvfb -> emulator window -> x11vnc -> websockify -> nginx)
+:5900   VNC         (x11vnc)
+:5555   emulator adbd (internal; used by adb/jobs)
 ```
 
 Toolchain baked in: **JDK 21**, **Gradle 8.13**, **Android SDK**
-(`platform-tools`, `platforms;android-35`, `build-tools;35.0.0`), plus
-`qemu-system-x86`/`qemu-utils` and `novnc`/`nginx-light`. `privileged: false`;
-KVM comes from the device plugin, same as the other VM workers.
+(`platform-tools`, `emulator`, `platforms;android-35`, `build-tools;35.0.0`,
+`system-images;android-35;google_apis;x86_64`), plus `xvfb`/`x11vnc` and
+`novnc`/`websockify`/`nginx-light`. `privileged: false`; KVM comes from the
+device plugin, same as the other VM workers.
+
+The emulator only ships an X11 (xcb) Qt plugin — there is no Wayland plugin and
+no X/Y11 desktop is required by anything else — so the screen path is a virtual
+X server, not a Wayland compositor:
+
+```
+Xvfb :99  ->  emulator Qt window (xcb, -fixed-scale)
+          ->  x11vnc :5900  ->  websockify :6081  ->  nginx :6080 (noVNC)
+```
+
+The entrypoint pins the device window to the top-left and hides the emulator
+toolbar/sidebar, so the browser view is exactly the 1080x2400 device screen.
 
 The worker runs on the host side (Android cannot run the linux/amd64 Go worker)
 and drives the guest over `adb`. Because the worker's job environment is a strict
@@ -346,29 +298,26 @@ never reaches a job — the image ships a global Gradle init script that writes
 
 ```sh
 scripts/build-all.sh                        # dist/ worker binaries
-# the golden is derived offline from the official BlissOS 16 FOSS ISO (see
-# images/blissos-dev/golden-construct.sh: unsquash system.img, bake adbd +
-# dropbear, GRUB-install, convert to qcow2). It needs a privileged pod with
-# loop/kpartx because the nbd module is absent on this node.
-./images/blissos-dev/build.sh               # -> <registry>/easyworker-blissos:v1.0.0
-kubectl apply -f k8s/easyworker-blissos.yaml
+./images/android/build.sh                   # -> <registry>/easyworker-android:v1.0.0
+kubectl apply -f k8s/easyworker-android.yaml
 ```
+
+The AVD is created on first start and its userdata lives on `/data` (an
+`emptyDir` in the manifest, so each pod starts clean; swap for a PVC to persist).
 
 One job, full loop (verified end to end):
 
 ```
 gradle --no-daemon assembleDebug            # builds app-debug.apk in the container
-adb -s 127.0.0.1:5555 install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s 127.0.0.1:5555 shell wm dismiss-keyguard
-adb -s 127.0.0.1:5555 shell am start -n <pkg>/.MainActivity
-adb -s 127.0.0.1:5555 shell uiautomator dump /sdcard/u.xml   # assert the UI rendered
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell am start -n <pkg>/.MainActivity
+adb -s emulator-5554 shell uiautomator dump /sdcard/u.xml    # assert the UI rendered
 ```
 
 Notes:
 
-- **APKs must be x86_64** — BlissOS FOSS ships no ARM translation layer.
-- The guest disk is a writable overlay on `/vm/golden.qcow2`, so each pod starts
-  clean; the golden itself is read-only.
+- **APKs must be x86_64** — this system image has no ARM translation layer.
 - `ANDROID_MEM`/`ANDROID_CPUS` size the guest only; size the pod's requests above
   that so the toolchain has room too.
 
