@@ -31,10 +31,9 @@ esac
 REGISTRY="${REGISTRY:-forgejo.develop.10.199.64.20.nip.io}"
 NAMESPACE="${NAMESPACE:-easylab}"
 BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"
-# Stage-1 toolchain tarballs are fetched from upstream over this proxy. The
-# in-region apt/apk mirrors are reached directly, so they are excluded.
+# fetch-artifacts.sh downloads the toolchain tarballs through this proxy (host
+# side, so builds never need it). apt/apk use the in-region mirror directly.
 BUILD_PROXY="${BUILD_PROXY:-http://mihomo.develop.svc.cluster.local:7890}"
-BUILD_NO_PROXY="${BUILD_NO_PROXY:-localhost,127.0.0.1,.svc.cluster.local,.svc,mirrors.aliyun.com}"
 FORGEJO_USER="${FORGEJO_USER:-root}"
 FORGEJO_PASS="${FORGEJO_PASS:-devpassword}"
 
@@ -51,15 +50,18 @@ PRESET_TAG="${PRESET_TAG:-${DISTRO_TAG}}"
 # Which languages have a Dockerfile in the selected distro. Alpine/musl has no
 # builds for some toolchains:
 #   swift  - glibc-only, no musl toolchain at all
-#   conda  - Miniconda's payload is glibc-linked (its installer even refuses a
-#            musl libc), so there is no usable conda on alpine
-#   elixir - hex.pm publishes OTP builds for ubuntu, not alpine; OTP from source
-#            is out of scope, so elixir is debian-only too
+#   dart   - no musl SDK, and the glibc SDK cannot run without a glibc layer
+#   elixir - debian-only by decision
+#   conda/pixi - conda-forge publishes no musl subdir, so no conda ecosystem
+#                tool can build an environment on alpine (pixi's static musl
+#                binary starts but installs glibc packages). Debian has both:
+#                `conda` and `pixi`.
 case "$DISTRO" in
   debian-trixie)
-    PRESET_LANGS="${PRESET_LANGS:-node python go rust java dotnet ruby php elixir dart conan conda swift}" ;;
+    # Order matters for images with a `<lang>.base` parent: parents first.
+    PRESET_LANGS="${PRESET_LANGS:-node python go rust java kotlin groovy clojure scala dotnet ruby php elixir gleam dart swift conan conda pixi bun deno julia crystal ocaml haskell zig perl lua r cc cpp}" ;;
   alpine-3.24)
-    PRESET_LANGS="${PRESET_LANGS:-node python go rust java dotnet ruby php conan}" ;;
+    PRESET_LANGS="${PRESET_LANGS:-node python go rust java kotlin groovy clojure scala dotnet ruby php gleam conan bun zig crystal ocaml haskell lua}" ;;
 esac
 
 # build_image <repo-name> <dockerfile> <tag> <base-image-ref> [extra-context...]

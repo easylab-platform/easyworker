@@ -1,0 +1,15 @@
+# Toolchain image: Crystal, Alpine/musl.
+#
+# The official binaries are statically linked, so they run on musl as-is.
+# shards' registry is git-based (git cache protocol).
+#
+# CRYSTAL_WORKERS caps the compiler's worker pool: its default derives the
+# count from the host CPU inventory, which overflows in a container on a very
+# large node.
+ARG BASE_IMAGE=toolchain-base:alpine-3.24
+FROM ${BASE_IMAGE}
+COPY cache/crystal-1.21.0-1-linux-x86_64.tar.gz /tmp/crystal.tar.gz
+RUN mkdir -p /opt/crystal && tar -xzf /tmp/crystal.tar.gz -C /opt/crystal --strip-components=1 && rm /tmp/crystal.tar.gz
+ENV PATH=/opt/crystal/bin:$PATH \
+    CRYSTAL_WORKERS=4
+RUN crystal --version && shards --version

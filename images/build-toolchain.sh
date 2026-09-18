@@ -45,7 +45,17 @@ build() { # proto  (proto "base" -> the shared toolchain base)
     df="${DIR}/Dockerfile.${dfproto}"
   fi
   [ -f "$df" ] || { echo "no Dockerfile for ${proto} in ${DISTRO}: ${df}"; exit 1; }
-  build_image "$name" "$df" "$TOOLCHAIN_TAG" "$TOOLCHAIN_BASE_REF"
+  # A `<lang>.base` file overrides the parent image: it names another stage-1
+  # toolchain (e.g. java for kotlin, elixir for gleam) whose parent the new
+  # image extends, so the JDK/OTP is not downloaded twice. Build order then
+  # matters: PRESET_LANGS lists the parents before their children.
+  local parent="$TOOLCHAIN_BASE_REF"
+  if [ -f "${DIR}/${dfproto}.base" ]; then
+    local p; p="$(grep -vE '^[[:space:]]*(#|$)' "${DIR}/${dfproto}.base" | head -1)"
+    [ -n "$p" ] || { echo "empty parent in ${DIR}/${dfproto}.base"; exit 1; }
+    parent="${REGISTRY}/${NAMESPACE}/${TOOLCHAIN_REPO}-${p}:${TOOLCHAIN_TAG}"
+  fi
+  build_image "$name" "$df" "$TOOLCHAIN_TAG" "$parent"
 }
 
 for l in ${LANGS}; do

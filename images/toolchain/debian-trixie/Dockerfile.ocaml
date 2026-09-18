@@ -1,0 +1,11 @@
+# Toolchain image: OCaml (opam).
+#
+# opam is a statically linked binary; the compiler itself is built by opam on
+# first switch creation. opam-repository is a git repository, so resolution
+# goes through the git cache protocol.
+ARG BASE_IMAGE=toolchain-base:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/opam-2.6.0-x86_64-linux /usr/local/bin/opam
+RUN chmod +x /usr/local/bin/opam
+ENV OPAMROOT=/opt/opam
+RUN opam --version

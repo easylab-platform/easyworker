@@ -1,0 +1,3 @@
+
+# JS runtimes use Node's root-store conventions: NODE_EXTRA_CA_CERTS appends
+# the egress CA to the bundled Mozilla roots (base image sets the path).

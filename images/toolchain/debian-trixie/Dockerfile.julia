@@ -1,0 +1,12 @@
+# Toolchain image: Julia.
+#
+# Generic: the tarball is pre-downloaded (fetch-artifacts.sh) and COPYed.
+# Julia's General registry is a git repository, so package installs go through
+# the git cache protocol (or direct) rather than a Julia-specific adapter.
+ARG BASE_IMAGE=toolchain-base:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/julia-1.13.0-linux-x86_64.tar.gz /tmp/julia.tar.gz
+RUN mkdir -p /opt/julia && tar -xzf /tmp/julia.tar.gz -C /opt/julia --strip-components=1 && rm /tmp/julia.tar.gz
+ENV PATH=/opt/julia/bin:$PATH \
+    JULIA_DEPOT_PATH=/opt/julia-depot
+RUN julia --version

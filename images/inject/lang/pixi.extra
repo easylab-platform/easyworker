@@ -1,0 +1,4 @@
+
+# pixi (like uv/rustls) defaults to bundled webpki roots and ignores the system
+# bundle; `system` makes it read the store the egress CA was merged into.
+ENV PIXI_TLS_ROOT_CERTS=system

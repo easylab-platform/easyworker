@@ -1,0 +1,11 @@
+# Toolchain image: Haskell (GHCup), Alpine/musl.
+#
+# Only the statically linked ghcup installer is baked; GHC is per-project and
+# huge. Within alpine, ghcup installs its own musl bindists.
+ARG BASE_IMAGE=toolchain-base:alpine-3.24
+FROM ${BASE_IMAGE}
+COPY cache/x86_64-linux-ghcup-0.2.6.2 /usr/local/bin/ghcup
+RUN chmod +x /usr/local/bin/ghcup
+ENV GHCUP_INSTALL_BASE_PREFIX=/opt \
+    PATH=/opt/.ghcup/bin:/root/.ghcup/bin:$PATH
+RUN ghcup --version

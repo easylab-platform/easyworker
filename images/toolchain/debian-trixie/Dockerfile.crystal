@@ -1,0 +1,17 @@
+# Toolchain image: Crystal.
+#
+# The official binaries are statically linked (crystal + shards), so nothing is
+# needed from apt beyond what the base already provides for linking programs.
+# shards' registry is git-based, so dependency resolution goes through the git
+# cache protocol.
+#
+# CRYSTAL_WORKERS caps the compiler's per-CPU worker pool: its default derives
+# the count from the host CPU inventory, which overflows inside a container on
+# a very large node (CI nodes here report 128 CPUs).
+ARG BASE_IMAGE=toolchain-base:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/crystal-1.21.0-1-linux-x86_64.tar.gz /tmp/crystal.tar.gz
+RUN mkdir -p /opt/crystal && tar -xzf /tmp/crystal.tar.gz -C /opt/crystal --strip-components=1 && rm /tmp/crystal.tar.gz
+ENV PATH=/opt/crystal/bin:$PATH \
+    CRYSTAL_WORKERS=4
+RUN crystal --version && shards --version

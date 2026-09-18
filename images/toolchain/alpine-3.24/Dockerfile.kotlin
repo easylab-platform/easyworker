@@ -1,0 +1,10 @@
+# Toolchain image: Kotlin (+ Gradle), Alpine/musl.
+#
+# Extends the alpine java toolchain (musl JDK + Gradle + cacerts trust, which
+# is where the egress CA gets imported). Kotlin's compiler is a JVM archive.
+ARG BASE_IMAGE=toolchain-java:alpine-3.24
+FROM ${BASE_IMAGE}
+COPY cache/kotlin-compiler-2.4.20.zip /tmp/kotlin.zip
+RUN unzip -q /tmp/kotlin.zip -d /opt && rm /tmp/kotlin.zip && ln -s /opt/kotlinc /opt/kotlin
+ENV PATH=/opt/kotlin/bin:$PATH
+RUN kotlinc -version

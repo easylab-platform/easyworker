@@ -6,7 +6,7 @@
 # Two files are produced:
 #   ca.crt   the certificate, baked into the base image (stage 2) and mounted
 #            into the sidecar/trust-probe pods
-#   ca.key   the matching private key, needed only by the easyproxy sidecar in
+#   ca.key   the matching private key, needed only by the easysidecar sidecar in
 #            test-preset.sh (never baked into an image; gitignored)
 #
 # Source of truth: easylab generates and persists it under $EASYVCS_HOME/egress-ca

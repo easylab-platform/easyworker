@@ -23,8 +23,8 @@ FROM ${BASE_IMAGE}
 COPY ca.crt /usr/local/share/ca-certificates/easylab-egress-ca.crt
 # Keep a standalone copy for runtimes that take an explicit file path
 # (Node NODE_EXTRA_CA_CERTS, Dart --root-certs-file, Hex HEX_CACERTS_PATH...).
-# It deliberately lives OUTSIDE /etc/easyproxy: a pod using the preset may
-# still mount the sidecar's rules as a ConfigMap at /etc/easyproxy, which
+# It deliberately lives OUTSIDE /etc/easysidecar: a pod using the preset may
+# still mount the sidecar's rules as a ConfigMap at /etc/easysidecar, which
 # would shadow anything baked there.
 RUN install -Dm644 /usr/local/share/ca-certificates/easylab-egress-ca.crt /usr/local/share/easylab/egress-ca.crt \
     && update-ca-certificates

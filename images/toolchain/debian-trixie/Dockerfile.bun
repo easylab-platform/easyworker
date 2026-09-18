@@ -1,0 +1,11 @@
+# Toolchain image: Bun (JS/TS runtime + package manager).
+#
+# Generic: the binary is pre-downloaded (fetch-artifacts.sh) and COPYed. Bun
+# speaks the npm protocol and honors NODE_EXTRA_CA_CERTS / SSL_CERT_FILE, so
+# the stage-2 CA wiring is shared with the node image.
+ARG BASE_IMAGE=toolchain-base:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/bun-linux-x64.zip /tmp/bun.zip
+RUN unzip -q /tmp/bun.zip -d /tmp && install -m755 /tmp/bun-linux-x64/bun /usr/local/bin/bun && rm -rf /tmp/bun.zip /tmp/bun-linux-x64
+ENV BUN_INSTALL=/opt/bun
+RUN bun --version

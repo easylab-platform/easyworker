@@ -1,0 +1,10 @@
+# Toolchain image: Bun (JS/TS runtime + package manager), Alpine/musl.
+#
+# Upstream ships an explicit musl zip; pre-downloaded (fetch-artifacts.sh) and
+# COPYed. Bun honors NODE_EXTRA_CA_CERTS / SSL_CERT_FILE for extra roots.
+ARG BASE_IMAGE=toolchain-base:alpine-3.24
+FROM ${BASE_IMAGE}
+COPY cache/bun-linux-x64-musl.zip /tmp/bun.zip
+RUN unzip -q /tmp/bun.zip -d /tmp && install -m755 /tmp/bun-linux-x64-musl/bun /usr/local/bin/bun && rm -rf /tmp/bun.zip /tmp/bun-linux-x64-musl
+ENV BUN_INSTALL=/opt/bun
+RUN bun --version

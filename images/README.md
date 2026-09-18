@@ -31,6 +31,10 @@ own directory under `toolchain/` and its own tag, so both sets coexist:
 | `debian-trixie` | `debian:trixie-slim` | `debian-trixie` | everything |
 | `alpine-3.24` | `alpine:3.24` | `alpine-3.24` | musl; no swift/dart/elixir, and no conda/pixi (conda-forge ships no musl subdir). `gcompat` is deliberately never installed |
 
+`cpp` (Clang + libc++) exists only for `debian-trixie`: the LLVM APT repo is
+Debian-only and libc++ on musl is not a supported target here. `cc` remains the
+gcc/libstdc++ image on both distros.
+
 Toolchain images live at `…/toolchain-<lang>:<tag>`, presets at
 `…/easyworker-<lang>:<tag>`. The two prefixes differ on purpose: a preset build
 must not overwrite its own stage-1 base.
@@ -58,6 +62,13 @@ OS packages are the exception: `base.Dockerfile` installs them from
 `mirrors.aliyun.com` at build time (the image is restored to the official
 distro sources afterwards). Language runtimes are never installed with
 `apt`/`apk`; only base OS libraries are (e.g. `libicu` for .NET, `openssl`).
+
+One toolchain does use its own APT repo: **`cpp`** (Clang + libc++) pulls from
+**apt.llvm.org**, because Debian trixie stops at clang-22 and ships no libc++.
+The LLVM suite is fetched from an in-region LLVM mirror during the build
+(TUNA/NJU/Huawei carry `llvm-apt`), while the ~3 KB signing key still comes from
+apt.llvm.org (mirrors don't carry it); official sources are restored afterwards.
+See `toolchain/VERSIONS.md` for the pinned LLVM major and package-name scheme.
 
 ## CA trust: what is baked and why
 

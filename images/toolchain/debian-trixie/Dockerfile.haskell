@@ -1,0 +1,13 @@
+# Toolchain image: Haskell (GHCup + cabal/stack).
+#
+# Only ghcup itself is baked: GHC and the toolchain are ~GBs and version-
+# selected per project, so the image ships the installer and lets a job
+# install the exact GHC it wants. Hackage is plain HTTP (no artifact protocol),
+# so it is reached directly or through the git/HTTP cache.
+ARG BASE_IMAGE=toolchain-base:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/x86_64-linux-ghcup-0.2.6.2 /usr/local/bin/ghcup
+RUN chmod +x /usr/local/bin/ghcup
+ENV GHCUP_INSTALL_BASE_PREFIX=/opt \
+    PATH=/opt/.ghcup/bin:/root/.ghcup/bin:$PATH
+RUN ghcup --version

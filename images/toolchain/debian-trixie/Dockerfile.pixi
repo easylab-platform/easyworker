@@ -1,0 +1,15 @@
+# Toolchain image: Pixi (conda + PyPI environment manager).
+#
+# Pixi is a single statically-linked binary (upstream only ships a musl
+# build, which runs on glibc too); it is the second
+# conda-ecosystem tool alongside `conda` itself (see Dockerfile.conda). Both
+# are given because they serve different workflows: conda for the classic
+# `conda create/install` CLI, pixi for per-project lockfile environments.
+#
+# The binary is pre-downloaded (fetch-artifacts.sh) and COPYed.
+ARG BASE_IMAGE=toolchain-base:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/pixi-x86_64-unknown-linux-musl /usr/local/bin/pixi
+RUN chmod +x /usr/local/bin/pixi
+# pixi defaults to the bundled webpki roots; the stage-2 inject uses the system
+# store (PIXI_TLS_ROOT_CERTS=system) so the baked egress CA is honored.

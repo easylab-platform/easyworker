@@ -34,7 +34,17 @@ build() { # proto
     name="${PRESET_REPO}-${proto}"
     df="${HERE}/inject/base.Dockerfile"
     # Runtime-specific injection (Java keytool, pip.conf, ...) is appended.
-    [ -f "${HERE}/inject/lang/${dfproto}.extra" ] && df="${df} ${HERE}/inject/lang/${dfproto}.extra"
+    # The JVM languages extend the java toolchain, so they inherit the JDK's
+    # keystore and need the same CA import.
+    local inject="${dfproto}"
+    case "$proto" in
+      kotlin|groovy|clojure|scala) inject="java" ;;
+      gleam) inject="elixir" ;;
+      bun|deno) inject="node" ;;
+    esac
+    if [ -f "${HERE}/inject/lang/${inject}.extra" ]; then
+      df="${df} ${HERE}/inject/lang/${inject}.extra"
+    fi
   fi
   local src="${REGISTRY}/${NAMESPACE}/${TOOLCHAIN_REPO}-${proto}:${TOOLCHAIN_TAG}"
   build_image "$name" "$df" "$PRESET_TAG" "$src" easyworker ca.crt

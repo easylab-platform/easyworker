@@ -181,6 +181,10 @@ func jobEnv() []string {
 		"COMPOSER_CAFILE", "HEX_CACERTS_PATH", "NIX_SSL_CERT_FILE",
 		"DART_VM_OPTIONS", "UV_NATIVE_TLS", "UV_SYSTEM_CERTS",
 		"JAVA_TOOL_OPTIONS", "JAVA_HOME",
+		// C/C++ toolchain selection (the `cpp` preset makes clang + libc++ the
+		// default compiler and standard library; CMake seeds its compiler and
+		// flags from these, so a job must see them too).
+		"CC", "CXX", "CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS", "CMAKE_GENERATOR",
 		"PATH", // toolchains need PATH; the host PATH is acceptable (no secrets)
 		"HOME", "TMPDIR", "USER",
 	}

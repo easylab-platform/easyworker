@@ -1,0 +1,22 @@
+# Toolchain image: Clojure (clojure CLI / tools.deps).
+#
+# Extends the java toolchain (JDK + Gradle + cacerts trust). The upstream
+# tarball ships an install.sh that just copies jars into <prefix>/libexec and
+# patches the PREFIX/BINDIR placeholders in the scripts, so this does exactly
+# that inline (no network installer, no ruby dependency).
+ARG BASE_IMAGE=toolchain-java:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/clojure-tools-1.12.6.1673.tar.gz /tmp/clojure.tar.gz
+RUN set -eux; \
+    tar -xzf /tmp/clojure.tar.gz -C /tmp && rm /tmp/clojure.tar.gz; \
+    cd /tmp/clojure-tools; \
+    prefix=/usr/local; \
+    install -d "$prefix/libexec" "$prefix/bin"; \
+    cp ./*.jar "$prefix/libexec/"; \
+    cp deps.edn example-deps.edn tools.edn "$prefix"/; \
+    sed -e "s#PREFIX#$prefix#g" clojure > "$prefix/bin/clojure"; \
+    sed -e "s#BINDIR#$prefix/bin#g" clj > "$prefix/bin/clj"; \
+    chmod 755 "$prefix/bin/clojure" "$prefix/bin/clj"; \
+    cd /; rm -rf /tmp/clojure-tools
+ENV PATH=/usr/local/bin:$PATH
+RUN clojure -Sdescribe >/dev/null && echo clojure-ok
