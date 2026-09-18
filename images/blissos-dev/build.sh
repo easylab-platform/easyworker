@@ -9,7 +9,7 @@
 #
 # Prerequisites:
 #   * dist/easyworker-linux-amd64            (scripts/build-all.sh)
-#   * images/android-blessos/golden.qcow2    (see android-blessos/golden-construct.sh)
+#   * images/blissos-dev/golden.qcow2       (see golden-construct.sh)
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${DIR}/../.." && pwd)"
@@ -22,7 +22,7 @@ DEST="${REGISTRY}/${NAMESPACE}/${NAME}:${TAG}"
 BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"
 PROXY="${PROXY:-http://mihomo.develop.svc.cluster.local:7890}"
 WORKER_BIN="${WORKER_BIN:-${ROOT}/dist/easyworker-linux-amd64}"
-GOLDEN="${GOLDEN:-${ROOT}/images/android-blessos/golden.qcow2}"
+GOLDEN="${GOLDEN:-${DIR}/golden.qcow2}"
 
 for f in "${WORKER_BIN}" "${GOLDEN}"; do
   [ -e "$f" ] || { echo "missing $f" >&2; exit 1; }

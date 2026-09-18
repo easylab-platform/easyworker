@@ -4,9 +4,8 @@
 /worker-bin/
 .last-image
 
-# android golden image + ws-scrcpy build output (staged by build.sh)
-images/android-blessos/golden.qcow2
-images/android-blessos/ws-scrcpy/
+# android golden image (staged by images/blissos-dev/build.sh)
+images/blissos-dev/golden.qcow2
 
 # go
 go.work.sum
