@@ -158,7 +158,13 @@ func defaultWorkspace() string {
 }
 
 // jobEnv builds the base environment for interpreted jobs: proxy + registry
-// knobs only (explicitly allowlisted). Everything else is dropped.
+// knobs and CA/trust configuration only (explicitly allowlisted). Everything
+// else is dropped.
+//
+// The CA/trust entries matter for preset images (easylab/easyworker-<lang>):
+// those bake the egress CA into the image and set the per-runtime variables
+// here. Without forwarding them, a job would run in an image whose OWN
+// environment carries the trust config but the child process would not see it.
 func jobEnv() []string {
 	var out []string
 	pass := []string{
@@ -166,12 +172,30 @@ func jobEnv() []string {
 		"NO_PROXY", "no_proxy",
 		"NPM_CONFIG_REGISTRY", "PIP_INDEX_URL", "GOPROXY", "GOSUMDB",
 		"CARGO_REGISTRIES_CRATES_IO_INDEX",
+		// CA / trust configuration (system bundle and per-runtime overrides).
+		"SSL_CERT_FILE", "SSL_CERT_DIR",
+		"CURL_CA_BUNDLE", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH",
+		"REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CERT",
+		"NODE_EXTRA_CA_CERTS", "NODE_OPTIONS",
+		"AWS_CA_BUNDLE", "DENO_CERT", "CARGO_HTTP_CAINFO",
+		"COMPOSER_CAFILE", "HEX_CACERTS_PATH", "NIX_SSL_CERT_FILE",
+		"DART_VM_OPTIONS", "UV_NATIVE_TLS", "UV_SYSTEM_CERTS",
+		"JAVA_TOOL_OPTIONS", "JAVA_HOME",
 		"PATH", // toolchains need PATH; the host PATH is acceptable (no secrets)
 		"HOME", "TMPDIR", "USER",
 	}
 	for _, k := range pass {
 		if v, ok := os.LookupEnv(k); ok {
 			out = append(out, k+"="+v)
+		}
+	}
+	if !containsKey(out, "SSL_CERT_FILE") {
+		if f := firstExistingFile(
+			"/etc/ssl/certs/ca-certificates.crt",
+			"/etc/ssl/cert.pem",
+			"/etc/pki/tls/certs/ca-bundle.crt",
+		); f != "" {
+			out = append(out, "SSL_CERT_FILE="+f)
 		}
 	}
 	// Windows: ensure SystemRoot etc are present or the loader fails.
@@ -186,6 +210,16 @@ func jobEnv() []string {
 		out = append(out, "PATH="+defaultUnixPath())
 	}
 	return out
+}
+
+// firstExistingFile returns the first path that exists, else "".
+func firstExistingFile(paths ...string) string {
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 func containsKey(env []string, key string) bool {

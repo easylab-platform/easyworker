@@ -1,0 +1,12 @@
+# Toolchain image: CPython + pip + uv, Alpine (musl).
+#
+# python-build-standalone and uv both publish musl builds; both are
+# pre-downloaded (fetch-artifacts.sh) and COPYed.
+ARG BASE_IMAGE=toolchain-base:alpine-3.24
+FROM ${BASE_IMAGE}
+COPY cache/cpython-3.14.7+20260901-x86_64-unknown-linux-musl-install_only.tar.gz /tmp/py.tar.gz
+COPY cache/uv-x86_64-unknown-linux-musl.tar.gz /tmp/uv.tar.gz
+RUN mkdir -p /opt && tar -xzf /tmp/py.tar.gz -C /opt \
+ && mv /opt/python /opt/python-3.14.7 && ln -s /opt/python-3.14.7 /opt/python && rm /tmp/py.tar.gz \
+ && mkdir -p /opt/uv && tar -xzf /tmp/uv.tar.gz -C /opt/uv --strip-components=1 && rm /tmp/uv.tar.gz
+ENV PATH=/opt/python/bin:/opt/uv:$PATH

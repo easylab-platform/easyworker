@@ -1,0 +1,10 @@
+# The egress CA is per-deployment; extract it with ./extract-ca.sh.
+# ca.key is the sidecar's signing key: never commit it.
+/ca.crt
+/ca.key
+# Locally pre-downloaded toolchain artifacts (fetch-artifacts.sh).
+/cache/
+# Build-time mirrors of the toolchain artifacts.
+/easyworker
+# Mirror URL overrides for stage 1 (written by mirror.sh or by hand).
+/toolchain/urls.local.env

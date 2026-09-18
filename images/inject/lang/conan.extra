@@ -1,0 +1,5 @@
+
+# pip ships a vendored certifi bundle and ignores the system roots, and a
+# fresh HOME/venv would not see the image env; pip.conf makes PIP_CERT
+# effective everywhere.
+RUN printf '[global]\ncert = /etc/ssl/certs/ca-certificates.crt\n' > /etc/pip.conf

@@ -1,0 +1,8 @@
+# Toolchain image: Miniconda.
+#
+# Generic: the installer is pre-downloaded (fetch-artifacts.sh) and COPYed.
+ARG BASE_IMAGE=toolchain-base:debian-trixie
+FROM ${BASE_IMAGE}
+COPY cache/Miniconda3-latest-Linux-x86_64.sh /tmp/miniconda.sh
+RUN bash /tmp/miniconda.sh -b -p /opt/miniconda && rm /tmp/miniconda.sh
+ENV PATH=/opt/miniconda/bin:$PATH

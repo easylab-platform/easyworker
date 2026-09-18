@@ -1,0 +1,11 @@
+# Toolchain image: .NET SDK, Alpine (musl build).
+#
+# The musl SDK is pre-downloaded (fetch-artifacts.sh) and COPYed. Alpine needs
+# icu-libs/openssl at runtime, which are OS dependencies (apk), not toolchains.
+ARG BASE_IMAGE=toolchain-base:alpine-3.24
+FROM ${BASE_IMAGE}
+RUN apk add --no-cache icu-libs openssl libgcc libstdc++ zlib
+COPY cache/dotnet-sdk-10.0.401-linux-musl-x64.tar.gz /tmp/dotnet.tar.gz
+ENV DOTNET_ROOT=/opt/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+RUN mkdir -p /opt/dotnet && tar -xzf /tmp/dotnet.tar.gz -C /opt/dotnet && rm /tmp/dotnet.tar.gz
+ENV PATH=/opt/dotnet:$PATH

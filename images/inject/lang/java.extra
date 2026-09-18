@@ -1,0 +1,8 @@
+
+# The JVM ignores the system PEM bundle and reads its own keystore, so the
+# egress CA has to be imported into the JDK's default cacerts. This is the
+# one runtime-specific injection that is not an environment variable; it runs
+# at preset build time so no JAVA_TOOL_OPTIONS is needed at runtime.
+RUN keytool -importcert -noprompt -trustcacerts -alias easylab-egress-ca \
+      -file /usr/local/share/easylab/egress-ca.crt \
+      -cacerts -storepass changeit
