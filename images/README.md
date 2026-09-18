@@ -29,7 +29,7 @@ own directory under `toolchain/` and its own tag, so both sets coexist:
 | DISTRO | base | tag | notes |
 |---|---|---|---|
 | `debian-trixie` | `debian:trixie-slim` | `debian-trixie` | everything |
-| `alpine-3.24` | `alpine:3.24` | `alpine-3.24` | musl; no swift/dart/elixir/conda, and `gcompat` is deliberately never installed |
+| `alpine-3.24` | `alpine:3.24` | `alpine-3.24` | musl; no swift/dart/elixir, and no conda/pixi (conda-forge ships no musl subdir). `gcompat` is deliberately never installed |
 
 Toolchain images live at `…/toolchain-<lang>:<tag>`, presets at
 `…/easyworker-<lang>:<tag>`. The two prefixes differ on purpose: a preset build
@@ -73,6 +73,7 @@ managers. The rest need an explicit path or are wired to their own store:
 | Dart | `DART_VM_OPTIONS=--root-certs-file=…` (builtin roots) |
 | Java | CA imported into the JDK's `cacerts` at image build |
 | Hex | `HEX_CACERTS_PATH` |
+| pixi | `PIXI_TLS_ROOT_CERTS=system` (bundled webpki roots by default) |
 
 All of these live in the **image** environment; `easyworker` forwards them to
 job processes through its job-env allowlist, so a CI step sees them without the
@@ -92,3 +93,15 @@ its own repo so a test-only change cannot alter what developers run.
 
 Pinned in `toolchain/<distro>/urls.env`; keep them in sync with
 `artifact/e2e/toolchain/manifest.txt` when both are refreshed.
+
+- **`toolchain/VERSIONS.md`** — every pinned version with its URL **pattern**
+  (so bumping is a one-line edit) and the upstream API where the latest is
+  discovered.
+- **`check-versions.sh`** — queries each upstream and prints pinned vs latest.
+
+```sh
+./check-versions.sh                 # pinned vs latest for every tool
+# edit toolchain/<distro>/urls.env
+./fetch-artifacts.sh <lang> && ./build-toolchain.sh <lang> && ./build-preset.sh <lang>
+```
+
