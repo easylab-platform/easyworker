@@ -76,7 +76,7 @@ k8s/easyworker.yaml              standalone host-runner Deployment (linux)
 k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VMs)
 k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
 k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
-k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 2 vCPU / 8 GiB
+k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 4 vCPU / 16 GiB
 k8s/easyworker-android.yaml      Android build toolchain + emulator + noVNC, one container
 images/android/                  Dockerfile + entrypoint + noVNC front for the emulator sandbox
 ```
@@ -245,6 +245,42 @@ COPY --chmod=755 ./start.sh /run/start.sh    # writes $WORKER_TOKEN to /run/shm/
 The guest launcher (installed in the image) starts easyworker with
 `WORKER_TOKEN` set from the fetched token, so the pod's `WORKER_TOKEN` env is
 the single knob.
+
+### GUI session + passwordless sudo (macOS, v1.4.0+)
+
+A LaunchDaemon runs in the system domain, so the worker it starts has **no Aqua
+session**: GUI programs cannot reach WindowServer, and anything that goes
+through macOS Authorization Services (an installer, `osascript … with
+administrator privileges`) fails because there is no one to answer the prompt.
+`sudo` is a separate matter — it needs a password and a TTY, which a job does
+not have either.
+
+The v1.4.0 macOS images fix both, baked into the guest disk:
+
+- **auto-login** for `docker` (`/etc/kcpassword` + loginwindow prefs), so a real
+  session `gui/501` exists at boot (`/dev/console` is `docker`);
+- the worker runs as a **LaunchAgent** in that session, as `docker`, so jobs
+  inherit the Aqua session;
+- `/etc/sudoers.d/easyworker` grants `docker` **NOPASSWD** sudo (and
+  `!requiretty`), so `sudo -n <cmd>` works with no prompt and no terminal.
+
+The LaunchDaemon is kept as a one-shot fallback: if the agent never starts it
+waits for `gui/501` and kickstarts the agent, and only runs the worker headless
+if no GUI session ever appears.
+
+This does **not** change macOS Authorization Services: `… with administrator
+privileges` still has no one to answer it. Use the CLI equivalents
+(`installer -pkg … -target /`, `softwareupdate -i …`) for those.
+
+Verify in a job:
+
+```sh
+id -un                 # docker
+sudo -n id -un         # root        (no password, no TTY)
+launchctl print gui/501 | head -2
+screencapture -x /tmp/s.png && sips -g pixelWidth /tmp/s.png
+open -a TextEdit && pgrep -lf TextEdit   # a real GUI app, on screen
+```
 
 Alternatives considered:
 

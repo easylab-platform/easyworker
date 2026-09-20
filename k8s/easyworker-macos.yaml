@@ -5,10 +5,13 @@
 # (extended resource squat.ai/kvm) while the pod stays privileged: false.
 #
 # Image variants on the same base (see readme):
-#   v1.3.0-basic    macOS 15 only (no developer toolchain)
-#   v1.3.0-xcode    + Xcode 26.3 / Swift 6.2.4
-#   v1.3.0-cmp      + Xcode + JDK 17 / Gradle / Kotlin / Compose Multiplatform
-#   v1.3.0-flutter  + Xcode + Flutter 3.47.4 (Swift Package Manager)
+#   v1.4.0-base     macOS 15 only (no developer toolchain)
+#   v1.4.0-xcode    + Xcode 26.3 / Swift 6.2.4
+#
+# Since v1.4.0 the guest worker runs as the auto-logged-in `docker` user inside
+# a real Aqua session (a LaunchAgent, not a LaunchDaemon), so GUI programs reach
+# WindowServer; `docker` also has passwordless sudo (`sudo -n` works).
+# Pre-v1.4.0 tags (v1.3.0-*) remain pullable but lack both.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -34,7 +37,7 @@ spec:
         - name: <registry-credentials>
       containers:
         - name: macos
-          image: <registry>/vm-images/easyworker-macos:v1.3.0-basic
+          image: <registry>/vm-images/easyworker-macos:v1.4.0-base
           imagePullPolicy: IfNotPresent
 
           securityContext:

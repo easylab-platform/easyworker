@@ -1,12 +1,12 @@
 # easyworker on macOS 15 (Sequoia) with Xcode — a lightweight sandbox worker.
 #
-# Same contract as k8s/easyworker-macos.yaml, but a smaller footprint:
-#   * CPU_CORES=2, RAM_SIZE=8G (verified booting and serving on the same base)
-#   * image carries Xcode 26.3 Universal + the Command Line Tools (Swift 6.2.4,
-#     clang 17) so build agents can run `xcodebuild` / `swift build` directly.
+# Same contract as k8s/easyworker-macos.yaml, but the image carries Xcode 26.3
+# Universal + the Command Line Tools (Swift 6.2.4, clang 17) so build agents can
+# run `xcodebuild` / `swift build` directly.
 #
-# Increase CPU_CORES to a power of two (4/8/16) and RAM_SIZE for heavier builds;
-# the baked guest disk supports it without re-install.
+# Verified booting and serving with CPU_CORES=4 / RAM_SIZE=16384M (the default
+# below). Raise to 8/16 for heavier builds; the baked guest disk supports it
+# without re-install.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,7 +32,7 @@ spec:
         - name: <registry-credentials>
       containers:
         - name: macos
-          image: <registry>/vm-images/easyworker-macos:v1.3.0-xcode
+          image: <registry>/vm-images/easyworker-macos:v1.4.0-xcode
           imagePullPolicy: IfNotPresent
 
           securityContext:
@@ -53,17 +53,17 @@ spec:
             # Non-empty => the guest worker starts pre-authorized (no claim).
             - { name: WORKER_TOKEN, value: "" }
             - { name: VERSION, value: "15" }
-            # Lightweight default; raise to 4/8/16 for heavier builds.
-            - { name: CPU_CORES, value: "2" }
-            - { name: RAM_SIZE, value: "8192M" }
+            # macOS wants a power-of-two vCPU count (2/4/8/16/...).
+            - { name: CPU_CORES, value: "4" }
+            - { name: RAM_SIZE, value: "16384M" }
             - { name: DISK_SIZE, value: "128G" }    # >= baked disk size
             - { name: MANUAL, value: "N" }
 
           resources:
-            requests: { cpu: "2", memory: "8Gi" }
+            requests: { cpu: "4", memory: "16Gi" }
             limits:
-              cpu: "2"
-              memory: "12Gi"
+              cpu: "4"
+              memory: "20Gi"
               squat.ai/kvm: "1"        # <- the KVM device request
 
           volumeMounts:
