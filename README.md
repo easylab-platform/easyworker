@@ -79,6 +79,7 @@ k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
 k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 4 vCPU / 16 GiB
 k8s/easyworker-android.yaml      Android build toolchain + emulator + noVNC, one container
 images/android/                  Dockerfile + entrypoint + noVNC front for the emulator sandbox
+images/macos/                    Dockerfile + build.sh + repack-disk.sh for the macOS VM images
 ```
 
 ## Regenerate
@@ -281,6 +282,43 @@ launchctl print gui/501 | head -2
 screencapture -x /tmp/s.png && sips -g pixelWidth /tmp/s.png
 open -a TextEdit && pgrep -lf TextEdit   # a real GUI app, on screen
 ```
+
+### Shrinking the guest disk (macOS, v1.5.0)
+
+The macOS images are dominated by one layer: the pre-baked guest qcow2. The
+committed golden stores its clusters **internally compressed** (zlib), so its
+bytes are already incompressible and the outer layer buys nothing — the shipped
+zstd layer sat at 14.85 GB for a 15.27 GB file.
+
+The fix is to defragment the qcow2 to **uncompressed 1 MiB clusters**
+(`qemu-img convert -O qcow2 -o cluster_size=1M`, no `-c`), which drops dead
+clusters and leaves the payload compressible again. A **27-bit (128 MiB) zstd
+window** then finds the large-scale APFS repetition an 8 MiB window misses.
+Measured on the base disk (20.10 GB defragged):
+
+| recipe | working set |
+|---|---|
+| shipped (no defrag, buildkit default zstd) | 14.85 GB |
+| defrag + buildkit zstd `-19` (8 MiB window) | 13.92 GB |
+| defrag + zstd `-19 --long=27` | **12.58 GB** |
+| defrag + zstd `--ultra -22 --long=27` | 12.53 GB (not worth it) |
+
+So the win is the defrag plus the long window, **not** the compression level.
+Things that do *not* help: guest-side zero-fill/`fstrim` before commit (APFS
+already trims — no-op), and converting to a raw image (identical).
+
+Results (both registries, same digest):
+
+| tag | before | after |
+|---|---|---|
+| `v1.5.0-base` | 14.81 GiB | **12.70 GiB** (−14.2%) |
+| `v1.5.0-xcode` | 19.27 GiB | **16.10 GiB** (−16.4%) |
+
+buildkit cannot set a long window, so the disk layer is recompressed by hand and
+swapped into the manifest (`repack-skopeo.sh`): decompress the old layer → tar
+the defragged qcow2 → `zstd -19 --long=27` → patch `layers[i]` and
+`rootfs.diff_ids[i]`. containerd accepts such layers (verified by running a pod
+from one); the guest is byte-identical, so v1.4.0 and v1.5.0 are interchangeable.
 
 Alternatives considered:
 

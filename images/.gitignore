@@ -8,3 +8,8 @@
 /easyworker
 # Mirror URL overrides for stage 1 (written by mirror.sh or by hand).
 /toolchain/urls.local.env
+# Pre-baked macOS/Windows guest disks + dockur boot support files.
+# Stage these outside the repo (or here, they are ignored).
+/macos/golden.qcow2
+/macos/support/
+/repack-*/
