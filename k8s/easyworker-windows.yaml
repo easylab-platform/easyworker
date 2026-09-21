@@ -5,6 +5,13 @@
 # resource squat.ai/kvm (see k8s/generic-device-plugin.yaml); the pod itself
 # stays privileged: false.
 #
+# Since v1.5.0 the guest worker runs as the `Docker` user in the interactive
+# session (an at-logon scheduled task), not as SYSTEM. UAC is disabled in this
+# image and Docker is an Administrator, so the worker and its jobs already hold
+# a full High-IL admin token (`net session`, writing under C:\Windows\System32
+# and HKLM all succeed). For the rare case that needs SYSTEM itself, the guest
+# ships C:\Users\Docker\ewelevate.cmd.
+#
 # The worker is fail-closed. Two modes:
 #   * WORKER_TOKEN set   -> pre-authorized at boot (no enrollment/claim).
 #   * WORKER_TOKEN empty -> the guest mints a random one-time code, retrieved
@@ -35,7 +42,7 @@ spec:
         - name: <registry-credentials>
       containers:
         - name: windows
-          image: <registry>/vm-images/easyworker-windows:v1.2.1
+          image: <registry>/vm-images/easyworker-windows:v1.5.0
           imagePullPolicy: IfNotPresent
 
           # NOT privileged. KVM is delivered by the device plugin: requesting

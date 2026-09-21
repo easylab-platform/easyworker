@@ -13,3 +13,6 @@
 /macos/golden.qcow2
 /macos/support/
 /repack-*/
+# Pre-baked Windows guest disk + dockur boot support files.
+/windows/disk/
+/windows/disk-support/
