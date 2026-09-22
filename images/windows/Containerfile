@@ -1,0 +1,54 @@
+# easyworker Windows sandbox — self-owned runtime, pre-baked disk, boot only.
+#
+# No upstream sandbox image is referenced. The runtime is the generic qemux/qemu
+# Debian base plus a vendored copy of the Windows boot scripts (vendor/run,
+# taken once from the upstream project and kept here), the virtio drivers, and
+# the token bridge.
+#
+# Only the boot path runs (needsInstall -> hasData && hasBootMarker ->
+# bootWindows). The upstream image also carries the whole Windows *installer*:
+# samba (shared folders), wimtools/cabextract/gcab/mtools/xmlstarlet/dos2unix
+# (unattended-answer editing + ISO/WIM extraction), python3-pip + blinter, and
+# /var/drivers.txz. None of that is reachable on the boot path, so it is not
+# installed here. Shared folders are off (SAMBA=N).
+ARG REGISTRY=git.agent.svc.cluster.local/root
+FROM ${REGISTRY}/udfread:1.2.0 AS udfread
+FROM ${REGISTRY}/qemu:750
+
+# udfread: the Windows ISO reader used by the installer; kept because the boot
+# path's disk detection references it. (Copied via a named stage because
+# COPY --from does not expand ARGs.)
+COPY --from=udfread /udfread /usr/bin/udfread
+
+# --- pre-baked guest disk + boot state -------------------------------------
+# The guest is already installed (data.qcow2 => DISK_FMT=qcow2), so no installer
+# runs. The UEFI identity/ROM/vars and the version marker travel alongside it.
+COPY disk/data.qcow2  /storage/data.qcow2
+COPY disk-support/windows.base /storage/windows.base
+COPY disk-support/windows.boot /storage/windows.boot
+COPY disk-support/windows.mac  /storage/windows.mac
+COPY disk-support/windows.rom  /storage/windows.rom
+COPY disk-support/windows.vars /storage/windows.vars
+COPY disk-support/windows.ver  /storage/windows.ver
+
+# --- vendored Windows runtime ---------------------------------------------
+# Boot scripts (vendor/run already includes the assets/ subdirectory).
+COPY --chmod=755 vendor/run/ /run/
+
+# --- token bridge (no sidecar) --------------------------------------------
+COPY --chmod=644 00-token.conf /etc/nginx/conf.d/00-token.conf
+COPY --chmod=755 start.sh      /run/start.sh
+
+ENV VERSION=win11 \
+    EDITION=pro \
+    CPU_CORES=8 \
+    DISK_SIZE=128G \
+    RAM_SIZE=32768M \
+    DISK_FMT=qcow2 \
+    MANUAL=N \
+    SAMBA=N \
+    USER_PORTS=48080
+
+VOLUME /storage
+EXPOSE 3389 8006 22 48080 8090
+ENTRYPOINT ["/usr/bin/tini", "-s", "/run/entry.sh"]

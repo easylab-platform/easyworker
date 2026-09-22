@@ -10,7 +10,7 @@ import (
 
 func init() {
 	// WORKER_TRACE=1 enables the exec/kill trace file (C:\Users\docker\
-	// ewdebug.log path is fixed for the dockur VM; harmless elsewhere).
+	// ewdebug.log path is fixed for the VM sandbox; harmless elsewhere).
 	if os.Getenv("WORKER_TRACE") == "1" {
 		Debugf = func(format string, args ...interface{}) {
 			f, err := os.OpenFile(os.Getenv("WORKER_TRACE_FILE"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)

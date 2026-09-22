@@ -26,7 +26,7 @@ DISK="${1:?defragged qcow2}"
 SRCTAG="${2:?source tag}"
 DSTTAG="${3:?destination tag}"
 
-REGISTRY="${REGISTRY:-forgejo.develop.10.199.64.20.nip.io/root}"
+REGISTRY="${REGISTRY:-git.agent.svc.cluster.local/root}"
 NAME="${NAME:-easyworker-windows}"
 LEVEL="${ZSTD_LEVEL:-19}"
 WINDOW="${ZSTD_WINDOW:-27}"

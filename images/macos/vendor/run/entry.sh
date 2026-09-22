@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+: "${APP:="macOS"}"
+: "${PLATFORM:="x64"}"
+: "${SUPPORT:="https://github.com/dockur/macos"}"
+
+: "${VGA:="vmware"}"
+: "${SHUTDOWN:="Y"}"
+: "${TIMEOUT:="105"}"
+: "${DISK_TYPE:="blk"}"
+: "${RAM_MINIMUM:="4G"}"
+: "${DISK_MINIMUM:="32G"}"
+: "${SOUND:="usb-audio"}"
+: "${BOOT_MODE:="macos"}"
+
+cd /run
+
+. start.sh      # Startup hook
+. utils.sh      # Load functions
+. init.sh       # Initialize system
+. memory.sh     # Check available memory
+. server.sh     # Start webserver
+. download.sh   # Load functions
+. install.sh    # Get the OSX images
+. disk.sh       # Initialize disks
+. display.sh    # Initialize graphics
+. audio.sh      # Initialize audio
+. network.sh    # Initialize network
+. boot.sh       # Configure boot
+. cpu.sh        # Configure CPU model
+. proc.sh       # Initialize processor
+. power.sh      # Configure shutdown
+. balloon.sh    # Initialize ballooning
+. config.sh     # Configure arguments
+. finish.sh     # Finish initialization
+
+trap - ERR
+
+cmd=(qemu-system-x86_64)
+version=$("${cmd[@]}" --version | awk 'NR==1 { print $4 }')
+info "Booting ${APP}${BOOT_DESC} using QEMU v$version..." && echo
+
+pipe="$QEMU_DIR/qemu.pipe"
+rm -f "$pipe" && mkfifo "$pipe"
+
+sed -u \
+  -e 's/\x1B\[[=0-9;]*[a-z]//gi' \
+  -e 's/\x1B\x63//g' \
+  -e 's/\x1B\[[=?]7l//g' \
+  -e '/^$/d' \
+  -e 's/\x44\x53\x73//g' \
+  -e 's/failed to load Boot/skipped Boot/g' \
+  <"$pipe" &
+
+output=$!
+
+if ! enabled "$SHUTDOWN"; then
+  exec "${cmd[@]}" ${ARGS:+ $ARGS} >"$pipe" 2>&1
+fi
+
+if ! interactive; then
+  "${cmd[@]}" ${ARGS:+ $ARGS} >"$pipe" 2>&1 &
+else
+  startConsole "$pipe"
+  startQemu "${cmd[@]}" ${ARGS:+ $ARGS} >"$pipe" 2>&1
+fi
+
+pid=$!
+rc=0
+
+wait "$pid" || rc=$?
+interactive && stopConsole
+wait "$output" || :
+
+[ -f "$QEMU_END" ] && exit "$rc"
+
+sleep 1 & wait $!
+finish "$rc"

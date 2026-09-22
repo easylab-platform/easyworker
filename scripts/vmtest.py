@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy easyworker to a dockur VM over SSH and run the ewtest suite on it.
+"""Deploy easyworker to a VM over SSH and run the ewtest suite on it.
 
 Usage: vmtest.py <macos|windows>
 Reads dist/ binaries built by scripts/build-all.sh. Prints the remote test

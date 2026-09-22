@@ -42,7 +42,7 @@ spec:
         - name: <registry-credentials>
       containers:
         - name: windows
-          image: <registry>/vm-images/easyworker-windows:v1.5.0
+          image: <registry>/vm-images/easyworker-windows:v1.7.0
           imagePullPolicy: IfNotPresent
 
           # NOT privileged. KVM is delivered by the device plugin: requesting
@@ -73,6 +73,10 @@ spec:
             - { name: DISK_FMT, value: "qcow2" }
             - { name: MANUAL, value: "N" }
             - { name: SAMBA, value: "N" }
+            # v1.5.0 omitted this, so QEMU never forwarded the worker port and a
+            # Service targeting 48080 could not reach the guest. The image now
+            # defaults it too; kept explicit here for the Service below.
+            - { name: USER_PORTS, value: "48080" }
 
           resources:
             requests: { cpu: "8", memory: "32Gi" }

@@ -5,8 +5,8 @@
 # (extended resource squat.ai/kvm) while the pod stays privileged: false.
 #
 # Image variants on the same base (see readme):
-#   v1.6.0-base     macOS 15 only (no developer toolchain)
-#   v1.6.0-xcode    + Xcode 26.3 / Swift 6.2.4
+#   v1.7.0-base     macOS 15 only (no developer toolchain)
+#   v1.7.0-xcode    + Xcode 26.3 / Swift 6.2.4
 #
 # Since v1.4.0 the guest worker runs as the auto-logged-in `docker` user inside
 # a real Aqua session (a LaunchAgent, not a LaunchDaemon), so GUI programs reach
@@ -15,9 +15,10 @@
 # v1.5.0 changed how the guest disk is stored (defragmented to uncompressed
 # 1 MiB clusters so the OCI layer compresses). v1.6.0 additionally drops the
 # macOS recovery/install media (base.dmg, ~845 MiB) from the image: the disk is
-# already installed, so dockur never runs its installer. The guest is
-# byte-identical, so v1.5.0 remains interchangeable. The upstream dockur runtime
-# is now pinned by digest instead of :latest.
+# already installed, so no installer runs. v1.7.0 makes the runtime self-owned:
+# the image is built FROM the generic qemux/qemu Debian base plus the vendored
+# boot scripts in images/macos/vendor/ — no upstream sandbox image is referenced
+# at all. The guest is byte-identical across v1.5.0–v1.7.0.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,7 +44,7 @@ spec:
         - name: <registry-credentials>
       containers:
         - name: macos
-          image: <registry>/vm-images/easyworker-macos:v1.6.0-base
+          image: <registry>/vm-images/easyworker-macos:v1.7.0-base
           imagePullPolicy: IfNotPresent
 
           securityContext:

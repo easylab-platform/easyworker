@@ -79,8 +79,8 @@ k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
 k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 4 vCPU / 16 GiB
 k8s/easyworker-android.yaml      Android build toolchain + headless emulator + browser screen
 images/android/                  Dockerfile + entrypoint + screen bridge for the emulator sandbox
-images/macos/                    Dockerfile + build.sh + repack-disk.sh for the macOS VM images
-images/windows/                  Dockerfile + build.sh + repack-disk.sh + guest/ for the Windows VM image
+images/macos/                    Containerfile + build.sh + repack-disk.sh + vendor/ for the macOS VM images
+images/windows/                  Containerfile + build.sh + repack-disk.sh + vendor/ + guest/ for the Windows VM image
 ```
 
 ## Regenerate
@@ -139,7 +139,7 @@ intentionally NOT supported — container + k8s only.
 
 ## Windows / macOS VM sandboxes without `privileged: true`
 
-easyworker also runs inside full **Windows / macOS VMs** (dockur-style golden
+easyworker also runs inside full **Windows / macOS VMs** (self-owned golden
 images) so a sandbox can build native desktop apps. Those workloads need KVM,
 and under **cgroup v2** the device controller is a BPF allow-list: Kubernetes
 has no per-device field, so a container normally cannot open `/dev/kvm` unless
@@ -186,7 +186,7 @@ In-cluster sandboxes get `WORKER_TOKEN` from the launcher. For a VM the token
 must cross into the guest, which cannot read the pod's environment. Instead the
 VM images bake a tiny bridge:
 
-- `/run/start.sh` (the dockur startup hook) writes `$WORKER_TOKEN` to
+- `/run/start.sh` (the boot hook) writes `$WORKER_TOKEN` to
   `/run/shm/token`;
 - nginx serves it on **`:8090`**, restricted to the guest subnet
   (`allow 172.30.0.0/24`, `deny all`, `no-store`). No Service exposes `:8090`;
@@ -206,9 +206,10 @@ supports both zero-touch pre-authorization and the normal claim flow.
 ### Writing your own VM image
 
 A minimal image only needs the device-plugin contract from the pod and the
-token bridge above. Two files are added to a qemu/dockur base:
+token bridge above. Two files are added to a qemu base (see
+`images/{macos,windows}/Containerfile` for the real thing):
 
-`/run/start.sh` (the dockur startup hook, sourced before nginx starts):
+`/run/start.sh` (sourced by the boot hook before the VM starts):
 
 ```bash
 #!/usr/bin/env bash
@@ -219,7 +220,7 @@ return 0
 ```
 
 `/etc/nginx/conf.d/00-token.conf` (nginx's base config already includes
-`conf.d/*.conf`; dockur's `server.sh` only rewrites `sites-enabled/web.conf`):
+`conf.d/*.conf`; the vendored `server.sh` only rewrites `sites-enabled/web.conf`):
 
 ```nginx
 server {
@@ -238,7 +239,7 @@ server {
 ```
 
 ```dockerfile
-FROM <qemu base with dockur scripts>
+FROM <registry>/qemu:750
 COPY --chmod=755 ./disk /storage/            # pre-baked guest disk (fat)
 COPY --chmod=644 ./00-token.conf /etc/nginx/conf.d/00-token.conf
 COPY --chmod=755 ./start.sh /run/start.sh    # writes $WORKER_TOKEN to /run/shm/token
@@ -319,8 +320,8 @@ Results (both registries, same digest):
 ### Dropping the install media (macOS v1.6.0)
 
 The macOS image also shipped `base.dmg`, the ~845 MiB recovery/install media
-dockur uses to *install* macOS. With a pre-baked disk that is dead weight:
-dockur's `install()` only runs when the disk has no data, and the QEMU
+the upstream runtime used to *install* macOS. With a pre-baked disk that is
+dead weight: the installer only runs when the disk has no data, and the QEMU
 `InstallMedia` device is only attached when `base.dmg` exists. v1.6.0 ships the
 boot support files without it (verified by booting the image with the file
 removed: worker as `docker`, `sudo -n` root, `gui/501`, macOS 15.7.9 all fine):
@@ -330,11 +331,9 @@ removed: worker as `docker`, `sudo -n` root, `gui/501`, macOS 15.7.9 all fine):
 | `easyworker-macos:v1.6.0-base` | 12.70 GiB | **11.88 GiB** (−0.82) |
 | `easyworker-macos:v1.6.0-xcode` | 16.10 GiB | **15.28 GiB** (−0.82) |
 
-The upstream `dockur-*` runtime is also pinned by digest now instead of
-`:latest`, so a shipped image cannot silently change under it. (Guest-side
-compaction was investigated and is a no-op on both guests: the macOS and Windows
-goldens are already clean, so the install media was the only real bulk left;
-Windows ships no install media at all.)
+(Guest-side compaction was investigated and is a no-op on both guests: the macOS
+and Windows goldens are already clean, so the install media was the only real
+bulk left; Windows ships no install media at all.)
 
 buildkit cannot set a long window, so the disk layer is recompressed by hand and
 swapped into the manifest (`images/macos/repack-disk.sh`,
@@ -342,6 +341,43 @@ swapped into the manifest (`images/macos/repack-disk.sh`,
 qcow2 → `zstd -19 --long=27` → patch `layers[i]` and `rootfs.diff_ids[i]`.
 containerd accepts such layers (verified by running a pod from one); the guest is
 byte-identical, so old and new tags are interchangeable.
+
+### Self-owned runtime, no upstream sandbox image (macOS/Windows v1.7.0)
+
+Through v1.6.0 the VM images were `FROM …/dockur-{macos,windows}` (pinned by
+digest). v1.7.0 drops that dependency entirely: the runtime is the generic
+**`qemux/qemu:750`** Debian base plus a **vendored** copy of the boot scripts and
+assets that live in this repo (`images/macos/vendor/`, `images/windows/vendor/`).
+The `Containerfile`s reference no upstream sandbox image, so the whole image is
+auditable here.
+
+Only the boot path is shipped. The upstream images also carry the macOS
+*installer* (recovery media, `install.sh` machinery) and the Windows installer
+(samba, wimtools/cabextract/gcab/mtools/xmlstarlet/dos2unix, `python3-pip` +
+blinter, `/var/drivers.txz`); none of that is reachable with a pre-baked disk, so
+it is not installed. `COPY --from` cannot expand an `ARG`, so the one extra
+binary (Windows' `udfread`) comes in via a named stage. The macOS boot signature
+still hashes `/opencore.iso`, `/vmh.zip` and `/assets/config.plist`, so those
+three stay.
+
+Sizes (same digest in the internal agent registry, forgejo and ghcr):
+
+| tag | size |
+|---|---|
+| `easyworker-macos:v1.7.0-base` | **11.89 GiB** |
+| `easyworker-macos:v1.7.0-xcode` | **15.29 GiB** |
+| `easyworker-windows:v1.7.0` | **14.67 GiB** |
+
+Verified end-to-end on a `privileged: false` pod (KVM from the device plugin):
+macOS worker as `docker` with `sudo -n` → root, `gui/501`, Swift 6.2.4 / Xcode
+26.3 in the xcode variant, `screencapture` 1920×1080; Windows worker as `Docker`
+with a full High-IL admin token (HKLM writes and `net session` succeed). All
+three pass the full `ewtest` suite (info, live watch, output filters, external
+exec, pipes, file I/O, traversal refusal, stdin, kill-tree) — `ALL PASS`.
+
+Windows v1.7.0 also fixes a v1.5.0 bug: the image declared no `USER_PORTS`, so
+the container never forwarded `48080` and a Service targeting it could not reach
+the guest worker. v1.7.0 sets `USER_PORTS=48080` in the `Containerfile`.
 
 Alternatives considered:
 
@@ -446,7 +482,7 @@ Notes:
 ## Multi-platform (windows / macos host-run)
 
 The same binary runs as a plain host process on Windows and macOS (the
-forgejo-runner desktop model). Verified against the dockur VMs:
+forgejo-runner desktop model). Verified against the VM sandboxes:
 
 ```
 scripts/build-all.sh    # cross-compile worker + ewtest (linux/windows/darwin)
@@ -464,7 +500,7 @@ Platform notes:
   `Win32_Process Create` (Start-Process holds the SSH channel); paths compare
   case-insensitively with `\\?\` prefix trimming.
 - **macOS**: process-group kill (`setpgid` + `SIGKILL`); universal not needed
-  for the dockur x86_64 VM, darwin/arm64 binaries built for real Apple
+  for the x86_64 VM, darwin/arm64 binaries built for real Apple
   Silicon.
 - **JobWait hardening lesson**: the original bug was NOT a flaky VM clock —
   it was an untyped-constant trap (`jobWaitMaxMs = 60_000` compared against

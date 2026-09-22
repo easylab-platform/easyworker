@@ -1,0 +1,58 @@
+# easyworker macOS sandbox — self-owned runtime, pre-baked disk, boot only.
+#
+# No upstream sandbox image is referenced. The runtime is the generic
+# qemux/qemu Debian base plus a vendored copy of the macOS boot scripts
+# (vendor/run, taken once from the upstream project and kept here), the macOS
+# firmware/identity assets, and the token bridge. The upstream project's
+# installer and its tooling are not part of this image at all.
+#
+# Only the boot path runs: the guest disk ships installed, so nothing downloads
+# or installs macOS. `openCoreSignature()` still hashes /opencore.iso, /vmh.zip
+# and /assets/config.plist, so those three stay even though the boot image is
+# pre-built and reused.
+ARG REGISTRY=git.agent.svc.cluster.local/root
+FROM ${REGISTRY}/qemu:750
+
+# --- vendored macOS runtime ------------------------------------------------
+# The boot scripts (entry/boot/cpu/disk/display/network/install/...).
+COPY --chmod=755 vendor/run/ /run/
+# Assets the boot path reads: the OpenCore config template, and the OpenCore
+# and VMHide archives whose hashes feed the boot-image signature.
+COPY --chmod=644 vendor/assets/config.plist /assets/config.plist
+COPY --chmod=600 vendor/opencore/opencore.iso /opencore.iso
+COPY --chmod=600 vendor/opencore/vmh.zip      /vmh.zip
+COPY --chmod=644 vendor/version /etc/version
+
+# --- pre-baked guest disk + boot state -------------------------------------
+# The guest is already installed. base.dmg (the macOS recovery/install media) is
+# deliberately not shipped: nothing installs macOS here, so it would be dead
+# weight. The boot image, firmware and machine identity are pre-built and are
+# reused as-is (their signature is unchanged, so boot.sh skips rebuilding them).
+COPY disk/data.qcow2 /storage/15/data.qcow2
+COPY disk/support/boot.img   /storage/15/boot.img
+COPY disk/support/boot.sig   /storage/15/boot.sig
+COPY disk/support/macos.id   /storage/15/macos.id
+COPY disk/support/macos.mac  /storage/15/macos.mac
+COPY disk/support/macos.mlb  /storage/15/macos.mlb
+COPY disk/support/macos.rom  /storage/15/macos.rom
+COPY disk/support/macos.sn   /storage/15/macos.sn
+COPY disk/support/macos.vars /storage/15/macos.vars
+
+# --- token bridge (no sidecar) --------------------------------------------
+# /run/start.sh is sourced before the VM starts; nginx already includes
+# conf.d/*.conf.
+COPY --chmod=644 00-token.conf /etc/nginx/conf.d/00-token.conf
+COPY --chmod=755 start.sh      /run/start.sh
+
+# macOS 15 Sequoia, pre-baked disk => no installer phase.
+# NOTE: Sequoia on this Ice Lake host deadlocks with 8 vCPUs; 4 is stable.
+ENV VERSION=15 \
+    CPU_CORES=4 \
+    DISK_SIZE=128G \
+    RAM_SIZE=16384M \
+    SAMBA=N \
+    USER_PORTS=48080
+
+VOLUME /storage
+EXPOSE 8006 5900 22 48080 8090
+ENTRYPOINT ["/usr/bin/tini", "-s", "/run/entry.sh"]

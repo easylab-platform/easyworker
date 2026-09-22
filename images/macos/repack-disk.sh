@@ -38,7 +38,7 @@
 #   repack:  ./repack-disk.sh <kind> <golden.defrag.qcow2> <srctag> <dsttag>
 #     e.g.   ./repack-disk.sh base /work/basic.defrag.qcow2 v1.4.0-base v1.5.0-base
 #
-# Env: REGISTRY (default forgejo.develop.10.199.64.20.nip.io/root),
+# Env: REGISTRY (default git.agent.svc.cluster.local/root),
 #      NAME (default easyworker-macos), ZSTD_LEVEL (19), ZSTD_WINDOW (27),
 #      ZSTD_THREADS (4), WORK (scratch dir).
 set -Eeuo pipefail
@@ -48,7 +48,7 @@ DISK="${2:?defragged qcow2}"
 SRCTAG="${3:?source tag}"
 DSTTAG="${4:?destination tag}"
 
-REGISTRY="${REGISTRY:-forgejo.develop.10.199.64.20.nip.io/root}"
+REGISTRY="${REGISTRY:-git.agent.svc.cluster.local/root}"
 NAME="${NAME:-easyworker-macos}"
 LEVEL="${ZSTD_LEVEL:-19}"
 WINDOW="${ZSTD_WINDOW:-27}"

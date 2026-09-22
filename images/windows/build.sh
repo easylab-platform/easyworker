@@ -3,8 +3,8 @@
 #
 #   ./images/windows/build.sh
 #
-# The image is a thin wrapper around a pre-baked guest disk: the quality of the
-# image depends entirely on the golden qcow2 handed in here. Supply a
+# The image is a self-owned runtime (the generic qemux/qemu base + the vendored
+# boot scripts in vendor/) wrapped around a pre-baked guest disk. Supply a
 # *defragged* disk (uncompressed 1 MiB clusters) or the OCI layer will not
 # compress — see repack-disk.sh.
 #
@@ -20,18 +20,18 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${DIR}/../.." && pwd)"
 
-REGISTRY="${REGISTRY:-forgejo.develop.10.199.64.20.nip.io}"
+REGISTRY="${REGISTRY:-git.agent.svc.cluster.local}"
 NAMESPACE="${NAMESPACE:-root}"
 NAME="${NAME:-easyworker-windows}"
-TAG="${TAG:-v1.5.0}"
+TAG="${TAG:-v1.7.0}"
 DEST="${REGISTRY}/${NAMESPACE}/${NAME}:${TAG}"
-BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"
+BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.agent.svc.cluster.local:1234}"
 PROXY="${PROXY:-http://mihomo.develop.svc.cluster.local:7890}"
 DISK="${DISK:-${DIR}/disk/data.qcow2}"
 SUPPORT="${SUPPORT:-${DIR}/disk-support}"
 BUILDCTL="${BUILDCTL:-$(command -v buildctl || true)}"
 
-for f in "${DIR}/Dockerfile" "${DIR}/00-token.conf" "${DIR}/start.sh" "${DISK}"; do
+for f in "${DIR}/Containerfile" "${DIR}/00-token.conf" "${DIR}/start.sh" "${DISK}"; do
   [ -e "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
 [ -d "${SUPPORT}" ] || { echo "missing support dir ${SUPPORT}" >&2; exit 1; }
@@ -40,7 +40,9 @@ done
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${WORK}/disk"
-cp "${DIR}/Dockerfile" "${DIR}/00-token.conf" "${DIR}/start.sh" "${WORK}/"
+cp "${DIR}/Containerfile" "${WORK}/Dockerfile"
+cp "${DIR}/00-token.conf" "${DIR}/start.sh" "${WORK}/"
+cp -r "${DIR}/vendor" "${WORK}/vendor"
 ln "${DISK}" "${WORK}/disk/data.qcow2" 2>/dev/null || cp "${DISK}" "${WORK}/disk/data.qcow2"
 cp -r "${SUPPORT}" "${WORK}/disk-support"
 
@@ -51,6 +53,7 @@ echo "  disk: $(du -h "${WORK}/disk/data.qcow2" | cut -f1)"
   --local "context=${WORK}" \
   --local "dockerfile=${WORK}" \
   --opt "filename=Dockerfile" \
+  --opt "build-arg:REGISTRY=${REGISTRY}/root" \
   --opt "build-arg:HTTP_PROXY=${PROXY}" \
   --opt "build-arg:HTTPS_PROXY=${PROXY}" \
   --output "type=oci,dest=${WORK}/image.oci,compression=zstd" \
