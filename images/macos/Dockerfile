@@ -11,10 +11,24 @@
 #   * docker auto-logs-in, so a real Aqua session (gui/501) exists;
 #   * the worker runs from a LaunchAgent in that session (as docker);
 #   * /etc/sudoers.d/easyworker gives docker NOPASSWD sudo.
-FROM forgejo.develop.10.199.64.20.nip.io/root/dockur-macos:latest
+# The upstream runtime is pinned by digest (self-owned: a moving :latest tag
+# would silently change the runtime under a shipped image).
+FROM forgejo.develop.10.199.64.20.nip.io/root/dockur-macos@sha256:08d1bcaac74ad44d548b7ce683b3dded083512d2a0d26416f9a620b763f8ea3d
 
 COPY disk/data.qcow2 /storage/15/data.qcow2
-COPY disk/support/ /storage/15/
+
+# Boot support only. base.dmg (the macOS recovery/install media, ~845 MiB) is
+# deliberately NOT shipped: the guest disk is already installed, so dockur never
+# runs its installer (install() only fires when the disk has no data). The
+# emulator boots straight from the baked disk.
+COPY disk/support/boot.img   /storage/15/boot.img
+COPY disk/support/boot.sig   /storage/15/boot.sig
+COPY disk/support/macos.id   /storage/15/macos.id
+COPY disk/support/macos.mac  /storage/15/macos.mac
+COPY disk/support/macos.mlb  /storage/15/macos.mlb
+COPY disk/support/macos.rom  /storage/15/macos.rom
+COPY disk/support/macos.sn   /storage/15/macos.sn
+COPY disk/support/macos.vars /storage/15/macos.vars
 
 # Worker binaries: linux (host side) + darwin (guest side).
 COPY --chmod=755 easyworker-linux  /usr/local/bin/easyworker

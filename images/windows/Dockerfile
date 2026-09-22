@@ -15,7 +15,11 @@
 #     worker's jobs already hold a full High-IL admin token;
 #   * C:\Users\Docker\ewelevate.cmd runs a command as SYSTEM for the few cases
 #     that need SYSTEM itself.
-FROM forgejo.develop.10.199.64.20.nip.io/root/dockur-windows:latest
+# Pinned by digest (self-owned: a moving :latest tag would silently change the
+# runtime under a shipped image). Windows ships no install media at all - the
+# installer downloads its ISO at run time - so there is no base.dmg-equivalent
+# to drop; the install-only scripts are well under 1 MiB and stay.
+FROM forgejo.develop.10.199.64.20.nip.io/root/dockur-windows@sha256:32cc92715a6c5dc1f63142d3be11059279d64d0faa7519618a07290b3076f9f2
 
 # Pre-baked guest disk, then the boot support files (OpenCore/UEFI identity,
 # ROM, and the saved vars) alongside it.

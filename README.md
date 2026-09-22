@@ -316,6 +316,26 @@ Results (both registries, same digest):
 | `easyworker-macos:v1.5.0-xcode` | 19.27 GiB | **16.10 GiB** (−16.4%) |
 | `easyworker-windows:v1.5.0` | 18.14 GiB | **14.65 GiB** (−19.2%) |
 
+### Dropping the install media (macOS v1.6.0)
+
+The macOS image also shipped `base.dmg`, the ~845 MiB recovery/install media
+dockur uses to *install* macOS. With a pre-baked disk that is dead weight:
+dockur's `install()` only runs when the disk has no data, and the QEMU
+`InstallMedia` device is only attached when `base.dmg` exists. v1.6.0 ships the
+boot support files without it (verified by booting the image with the file
+removed: worker as `docker`, `sudo -n` root, `gui/501`, macOS 15.7.9 all fine):
+
+| tag | v1.5.0 | v1.6.0 |
+|---|---|---|
+| `easyworker-macos:v1.6.0-base` | 12.70 GiB | **11.88 GiB** (−0.82) |
+| `easyworker-macos:v1.6.0-xcode` | 16.10 GiB | **15.28 GiB** (−0.82) |
+
+The upstream `dockur-*` runtime is also pinned by digest now instead of
+`:latest`, so a shipped image cannot silently change under it. (Guest-side
+compaction was investigated and is a no-op on both guests: the macOS and Windows
+goldens are already clean, so the install media was the only real bulk left;
+Windows ships no install media at all.)
+
 buildkit cannot set a long window, so the disk layer is recompressed by hand and
 swapped into the manifest (`images/macos/repack-disk.sh`,
 `images/windows/repack-disk.sh`): decompress the old layer → tar the defragged

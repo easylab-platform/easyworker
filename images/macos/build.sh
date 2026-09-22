@@ -46,7 +46,11 @@ cp "${DIR}/Dockerfile" "${DIR}/00-token.conf" "${DIR}/start.sh" "${WORK}/"
 cp "${LINUX_BIN}"  "${WORK}/easyworker-linux"
 cp "${DARWIN_BIN}" "${WORK}/easyworker-darwin"
 ln "${GOLDEN}" "${WORK}/disk/data.qcow2" 2>/dev/null || cp "${GOLDEN}" "${WORK}/disk/data.qcow2"
-cp -r "${SUPPORT}" "${WORK}/disk/support"
+mkdir -p "${WORK}/disk/support"
+# Boot support only; base.dmg (install media) is not shipped (see Dockerfile).
+for f in boot.img boot.sig macos.id macos.mac macos.mlb macos.rom macos.sn macos.vars; do
+  [ -e "${SUPPORT}/$f" ] && cp -f "${SUPPORT}/$f" "${WORK}/disk/support/"
+done
 
 echo "Building ${NAME} -> ${DEST} (buildkitd=${BUILDKIT})"
 echo "  disk: $(du -h "${WORK}/disk/data.qcow2" | cut -f1)"
