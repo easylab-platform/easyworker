@@ -77,8 +77,8 @@ k8s/generic-device-plugin.yaml   admit /dev/kvm as squat.ai/kvm (unprivileged VM
 k8s/easyworker-windows.yaml      non-privileged Windows VM worker (+ Services)
 k8s/easyworker-macos.yaml        non-privileged macOS VM worker (+ Services)
 k8s/easyworker-macos-xcode.yaml  the same, Xcode image, 4 vCPU / 16 GiB
-k8s/easyworker-android.yaml      Android build toolchain + emulator + noVNC, one container
-images/android/                  Dockerfile + entrypoint + noVNC front for the emulator sandbox
+k8s/easyworker-android.yaml      Android build toolchain + headless emulator + browser screen
+images/android/                  Dockerfile + entrypoint + screen bridge for the emulator sandbox
 images/macos/                    Dockerfile + build.sh + repack-disk.sh for the macOS VM images
 images/windows/                  Dockerfile + build.sh + repack-disk.sh + guest/ for the Windows VM image
 ```
@@ -335,7 +335,7 @@ Alternatives considered:
   `ResourceSlice`/`DeviceClass` is cluster-scoped and returns `403`. DRA would
   require cluster-admin RBAC, so the device plugin is the pragmatic choice.
 
-## Android sandbox (toolchain + official emulator + noVNC in one container)
+## Android sandbox (toolchain + official emulator + browser screen)
 
 `images/android/` is a self-contained Android **development** sandbox: the
 container carries the build toolchain **and** the official Android Emulator with
@@ -344,28 +344,53 @@ APK and immediately install/run it in the guest.
 
 ```
 :48080  Worker API  (WorkerService + WorkerEnroll)   host side
-:6080   noVNC       (Xvfb -> emulator window -> x11vnc -> websockify -> nginx)
-:5900   VNC         (x11vnc)
+:6080   screen      (headless emulator -> scrcpy H.264 -> bridge -> browser)
 :5555   emulator adbd (internal; used by adb/jobs)
 ```
 
 Toolchain baked in: **JDK 21**, **Gradle 8.13**, **Android SDK**
 (`platform-tools`, `emulator`, `platforms;android-35`, `build-tools;35.0.0`,
-`system-images;android-35;google_apis;x86_64`), plus `xvfb`/`x11vnc` and
-`novnc`/`websockify`/`nginx-light`. `privileged: false`; KVM comes from the
-device plugin, same as the other VM workers.
+`system-images;android-35;google_apis;x86_64`), plus `nodejs`/`node-ws` for the
+screen bridge. `privileged: false`; KVM comes from the device plugin, same as
+the other VM workers.
 
-The emulator only ships an X11 (xcb) Qt plugin — there is no Wayland plugin and
-no X/Y11 desktop is required by anything else — so the screen path is a virtual
-X server, not a Wayland compositor:
+### Screen: headless emulator, no X, no VNC
+
+The emulator runs with `-no-window`. Its screen is captured on-device by
+**scrcpy-server** and relayed to the browser by a small Node bridge
+(`images/android/bridge/server.js`):
 
 ```
-Xvfb :99  ->  emulator Qt window (xcb, -fixed-scale)
-          ->  x11vnc :5900  ->  websockify :6081  ->  nginx :6080 (noVNC)
+emulator -no-window
+  -> scrcpy-server 4.1  (adb forward, Annex-B H.264 + frame metadata)
+     -> bridge :6080  (WebSocket /h264)
+        -> MSE player (jMuxer) in the browser
 ```
 
-The entrypoint pins the device window to the top-left and hides the emulator
-toolbar/sidebar, so the browser view is exactly the 1080x2400 device screen.
+`scrcpy-server` is driven directly over `adb` (push + `app_process` +
+`adb forward`), so no scrcpy client is shipped and there is no X server, no
+`xvfb`, no `x11vnc` and no noVNC. The bridge is view-only — the player is a
+plain `<video>` fed by jMuxer, which is the reason it works over a plain HTTP
+origin (WebCodecs would require a secure context).
+
+### Input: adb through the worker API
+
+There is no input path in the bridge by design. Drive the device with adb as a
+job, which is also how a test asserts behaviour:
+
+```
+adb -s emulator-5554 shell input tap 540 1200
+adb -s emulator-5554 shell input text hello
+adb -s emulator-5554 shell input keyevent 4
+```
+
+### GPU (optional)
+
+Software rendering is the default (`ANDROID_GPU=swiftshader_indirect`). To use a
+host GPU, add `runtimeClassName: nvidia` and `nvidia.com/gpu: "1"` to the pod
+(the manifest has them commented out) and set `ANDROID_GPU=host`. Verified
+working on this cluster's A800 nodes; without the GPU the same image falls back
+to software.
 
 The worker runs on the host side (Android cannot run the linux/amd64 Go worker)
 and drives the guest over `adb`. Because the worker's job environment is a strict
@@ -375,7 +400,7 @@ never reaches a job — the image ships a global Gradle init script that writes
 
 ```sh
 scripts/build-all.sh                        # dist/ worker binaries
-./images/android/build.sh                   # -> <registry>/easyworker-android:v1.0.0
+./images/android/build.sh                   # -> <registry>/easyworker-android:v1.1.0
 kubectl apply -f k8s/easyworker-android.yaml
 ```
 

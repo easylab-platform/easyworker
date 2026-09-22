@@ -17,13 +17,14 @@ ROOT="$(cd "${DIR}/../.." && pwd)"
 REGISTRY="${REGISTRY:-forgejo.develop.10.199.64.20.nip.io}"
 NAMESPACE="${NAMESPACE:-root}"
 NAME="${NAME:-easyworker-android}"
-TAG="${TAG:-v1.0.0}"
+TAG="${TAG:-v1.1.0}"
 DEST="${REGISTRY}/${NAMESPACE}/${NAME}:${TAG}"
 BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"
 PROXY="${PROXY:-http://mihomo.develop.svc.cluster.local:7890}"
 WORKER_BIN="${WORKER_BIN:-${ROOT}/dist/easyworker-linux-amd64}"
 
-for f in "${DIR}/Dockerfile" "${DIR}/entrypoint.sh" "${DIR}/nginx.conf" \
+for f in "${DIR}/Dockerfile" "${DIR}/entrypoint.sh" \
+         "${DIR}/bridge/server.js" "${DIR}/bridge/index.html" "${DIR}/bridge/jmuxer.min.js" \
          "${DIR}/sdk-init.gradle" "${WORKER_BIN}"; do
   [ -e "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
@@ -32,8 +33,9 @@ BUILDCTL="${BUILDCTL:-$(command -v buildctl || echo /opt/tools/mise/installs/aqu
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
-cp "${DIR}/Dockerfile" "${DIR}/entrypoint.sh" "${DIR}/nginx.conf" \
-   "${DIR}/sdk-init.gradle" "${WORK}/"
+cp "${DIR}/Dockerfile" "${DIR}/entrypoint.sh" "${DIR}/sdk-init.gradle" "${WORK}/"
+mkdir -p "${WORK}/bridge"
+cp "${DIR}/bridge/server.js" "${DIR}/bridge/index.html" "${DIR}/bridge/jmuxer.min.js" "${WORK}/bridge/"
 cp "${WORKER_BIN}" "${WORK}/easyworker"
 
 echo "Building ${NAME} -> ${DEST} (buildkitd=${BUILDKIT})"

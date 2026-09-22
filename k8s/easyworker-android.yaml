@@ -3,17 +3,24 @@
 #
 # A job can `gradle assembleDebug`, `adb install` and `am start` in one place:
 # the worker (host side) drives the KVM-accelerated emulator over adb. The
-# emulator window is shared to a browser as a plain X11 desktop (Xvfb ->
-# x11vnc -> websockify -> noVNC).
+# emulator runs headless and its screen is relayed to a browser by a small
+# bridge (scrcpy-server H.264 -> WebSocket -> MSE/jMuxer); no X server, no VNC.
+#
+# The screen is view-only. To drive the device, run adb through the worker API:
+#   adb -s emulator-5554 shell input tap 540 1200
+#   adb -s emulator-5554 shell input text hello
 #
 # privileged: false — KVM comes from the squat.ai/kvm device plugin, exactly
 # like the Windows/macOS VM workers.
 #
 # Endpoints (inside the pod):
 #   :48080  Worker API  (WorkerService + WorkerEnroll)
-#   :6080   noVNC       (browser screen, open — ClusterIP only)
-#   :5900   VNC         (x11vnc)
+#   :6080   screen      (browser view, open — ClusterIP only)
 #   :5555   emulator adbd (internal; used by adb/jobs)
+#
+# GPU is optional. The default is software rendering
+# (ANDROID_GPU=swiftshader_indirect). To use a host GPU, uncomment the
+# runtimeClassName/resources below and set ANDROID_GPU=host.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -37,9 +44,13 @@ spec:
         - name: <registry-credentials>
       containers:
         - name: android
-          image: <registry>/easyworker-android:v1.0.0
+          image: <registry>/easyworker-android:v1.1.0
           imagePullPolicy: IfNotPresent
 
+          # Optional: run on a host GPU. Requires the NVIDIA container runtime
+          # and a node with an allocatable nvidia.com/gpu; then set
+          # ANDROID_GPU=host below.
+          # runtimeClassName: nvidia
           securityContext:
             privileged: false
             runAsUser: 0
@@ -52,8 +63,7 @@ spec:
 
           ports:
             - { name: worker, containerPort: 48080 }
-            - { name: novnc, containerPort: 6080 }
-            - { name: vnc, containerPort: 5900 }
+            - { name: screen, containerPort: 6080 }
 
           env:
             # Set a value to pre-authorize the worker (zero-touch, no claim);
@@ -66,6 +76,8 @@ spec:
             # leave headroom above the guest's own allocation).
             - { name: ANDROID_MEM, value: "4096" }
             - { name: ANDROID_CPUS, value: "4" }
+            # swiftshader_indirect (default) | host (needs runtimeClassName nvidia)
+            - { name: ANDROID_GPU, value: "swiftshader_indirect" }
 
           readinessProbe:
             httpGet: { path: /healthz, port: 48080 }
@@ -82,6 +94,7 @@ spec:
               cpu: "8"
               memory: "16Gi"
               squat.ai/kvm: "1"        # <- the KVM device request
+              # nvidia.com/gpu: "1"    # <- uncomment with runtimeClassName: nvidia
 
           volumeMounts:
             - { mountPath: /dev/net/tun, name: devtun }
@@ -110,7 +123,7 @@ spec:
     - { name: worker, port: 48080, targetPort: 48080 }
   type: ClusterIP
 ---
-# noVNC browser screen (open, no auth — ClusterIP only).
+# Browser screen (open, no auth — ClusterIP only).
 apiVersion: v1
 kind: Service
 metadata:
@@ -122,5 +135,5 @@ spec:
   selector:
     app: easyworker-android
   ports:
-    - { name: novnc, port: 80, targetPort: 6080 }
+    - { name: screen, port: 80, targetPort: 6080 }
   type: ClusterIP

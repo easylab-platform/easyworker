@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Android emulator</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;color:#ddd;font:14px system-ui,sans-serif}
+  #bar{padding:8px 12px;background:#1b1b1b;display:flex;gap:12px;align-items:center}
+  #bar b{color:#8fd}
+  #wrap{position:absolute;inset:44px 0 0 0;display:flex;align-items:center;justify-content:center}
+  video{max-width:100%;max-height:100%;background:#000}
+  #msg{position:absolute;inset:44px 0 0 0;display:flex;align-items:center;justify-content:center;color:#888}
+</style>
+</head>
+<body>
+<div id="bar">
+  <b>Android emulator</b>
+  <span id="status">connecting…</span>
+  <span id="stats"></span>
+</div>
+<div id="wrap"><video id="v" muted autoplay playsinline></video></div>
+<div id="msg">waiting for video…</div>
+<script src="/jmuxer.min.js"></script>
+<script>
+/* View-only player. WebCodecs needs a secure context, so over plain HTTP we
+ * mux the Annex-B H.264 into fMP4 with jMuxer and play it through MediaSource,
+ * which works on any origin. Input is not handled here — drive the device with
+ * adb via easyworker's API. */
+const statusEl=document.getElementById('status'), statsEl=document.getElementById('stats');
+const msgEl=document.getElementById('msg'), video=document.getElementById('v');
+let frames=0, bytes=0, t0=Date.now(), jmuxer=null, started=false;
+
+function startPlayer(){
+  if(started) return; started=true;
+  jmuxer=new JMuxer({node:video, mode:'video', flushingTime:100,
+    fps:30, debug:false, clearBuffer:true});
+  video.play().catch(()=>{});
+}
+
+function start(){
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/h264');
+  ws.binaryType='arraybuffer';
+  ws.onopen=()=>{statusEl.textContent='connected';};
+  ws.onmessage=(ev)=>{
+    const u=new Uint8Array(ev.data); if(u.length===0) return;
+    const tag=u[0], body=u.subarray(1); bytes+=u.length;
+    startPlayer();
+    // jMuxer takes Annex-B H.264 and builds the fMP4 init segment itself, so
+    // both the config packet (SPS/PPS) and the frames are fed as video data.
+    jmuxer.feed({video:body});
+    if(tag!==2){ frames++; }
+    if(frames===1){ msgEl.style.display='none'; statusEl.textContent='live'; }
+  };
+  ws.onclose=()=>{statusEl.textContent='disconnected';};
+  ws.onerror=()=>{statusEl.textContent='socket error';};
+}
+setInterval(()=>{const s=(Date.now()-t0)/1000;
+  statsEl.textContent=frames+' frames · '+(bytes/1048576).toFixed(1)+' MB · '+(frames/s).toFixed(1)+' fps';
+  if(frames>0){ const ct=video.currentTime; statusEl.textContent = ct>0 ? 'live' : 'buffering'; }
+},1000);
+start();
+</script>
+</body>
+</html>

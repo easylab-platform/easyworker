@@ -3,20 +3,19 @@ set -Eeuo pipefail
 
 # easyworker Android sandbox entrypoint.
 #
-#   Xvfb :99  ->  emulator Qt window (xcb)  ->  x11vnc :5900
-#     ->  websockify :6081 -> nginx :6080 (noVNC) -> browser
+#   emulator -no-window  ->  scrcpy-server  ->  bridge (WebSocket)  -> browser
 #   adb -> emulator-5554 (used by easyworker jobs)
 #   easyworker :48080
 #
-# The AVD is created on first start from the packaged system image; the guest's
+# The AVD is created on first start from the packaged system image; its
 # userdata lives on /data so it survives a container restart.
 
 STORAGE=/data
 AVD="${ANDROID_AVD:-sandbox}"
 MEM="${ANDROID_MEM:-4096}"
 CPUS="${ANDROID_CPUS:-4}"
-DISPLAY_NUM=99
-export DISPLAY=":${DISPLAY_NUM}"
+GPU="${ANDROID_GPU:-swiftshader_indirect}"
+SCREEN_PORT="${SCREEN_PORT:-6080}"
 
 export ANDROID_SDK_ROOT=/opt/android-sdk
 export ANDROID_HOME=/opt/android-sdk
@@ -25,66 +24,26 @@ export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/emulator:${PATH}"
 
 mkdir -p "$STORAGE" "$ANDROID_AVD_HOME" /workspace
 
-# --- virtual X server (the emulator needs an X display for its window) -----
-Xvfb "$DISPLAY" -screen 0 1080x2400x24 -ac -nolisten tcp >/tmp/xvfb.log 2>&1 &
-XVFB_PID=$!
-for _ in $(seq 1 50); do
-  [ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ] && break
-  sleep 0.2
-done
-
 # --- disposable AVD -------------------------------------------------------
 if [ ! -d "$ANDROID_AVD_HOME/${AVD}.avd" ]; then
   echo "android: creating AVD '${AVD}'"
   echo no | avdmanager create avd -n "$AVD" -k "system-images;android-35;google_apis;x86_64" \
     -d pixel_6 --force
-  # The emulator window is the device screen; the decorative frame only wastes
-  # space in the browser view.
   sed -i 's/^showDeviceFrame = yes/showDeviceFrame = no/' \
     "$ANDROID_AVD_HOME/${AVD}.avd/config.ini" || true
 fi
 
-# --- emulator -------------------------------------------------------------
-echo "android: starting emulator (kvm, ${CPUS} vCPU, ${MEM} MB)"
+# --- emulator (headless) --------------------------------------------------
+echo "android: starting emulator (kvm, ${CPUS} vCPU, ${MEM} MB, gpu=${GPU})"
 emulator -avd "$AVD" \
-  -no-audio -no-boot-anim -no-snapshot \
-  -gpu swiftshader_indirect -accel on \
+  -no-window -no-audio -no-boot-anim -no-snapshot \
+  -gpu "$GPU" -accel on \
   -memory "$MEM" -cores "$CPUS" \
-  -port 5554 -fixed-scale \
+  -port 5554 \
   >/tmp/emulator.log 2>&1 &
 EMU_PID=$!
 
-# The window is created at +100+100 and trails a toolbar/sidebar; pin the main
-# window to the top-left and hide the chrome so the VNC view is exactly the
-# device screen.
-( for _ in $(seq 1 120); do
-    main="$(xdotool search --name 'Android Emulator' 2>/dev/null | head -n1 || true)"
-    if [ -n "$main" ]; then
-      xdotool windowmove "$main" 0 0 || true
-      for w in $(xdotool search --name '^Emulator$' 2>/dev/null || true); do
-        xdotool windowunmap "$w" 2>/dev/null || true
-      done
-      break
-    fi
-    sleep 1
-  done ) &
-
-# --- screen sharing -------------------------------------------------------
-x11vnc -display "$DISPLAY" -rfbport 5900 -forever -shared -nopw -quiet \
-  >/tmp/x11vnc.log 2>&1 &
-VNC_PID=$!
-websockify --web /usr/share/novnc 6081 localhost:5900 >/tmp/websockify.log 2>&1 &
-WS_PID=$!
-nginx -e stderr >/tmp/nginx.log 2>&1 &
-NGINX_PID=$!
-
-cleanup() {
-  kill "${WORKER_PID:-}" "$NGINX_PID" "$WS_PID" "$VNC_PID" \
-       "$EMU_PID" "$XVFB_PID" 2>/dev/null || true
-}
-trap cleanup TERM INT
-
-# --- wait for the guest, then start the worker ----------------------------
+# --- wait for the guest, then start the screen bridge + worker -------------
 echo "android: waiting for adbd + boot_completed"
 adb start-server >/dev/null 2>&1 || true
 booted=""
@@ -101,12 +60,24 @@ if [ -z "$booted" ]; then
 fi
 echo "android: guest is up"
 
-# Keep the display awake and dismiss the keyguard so the browser always shows
-# the UI, not the lock screen.
+# Keep the display awake and dismiss the keyguard so the view is the UI, not
+# the lock screen.
 adb -s emulator-5554 shell "svc power stayon true" >/dev/null 2>&1 || true
 adb -s emulator-5554 shell "wm dismiss-keyguard" >/dev/null 2>&1 || true
 
+# --- screen bridge (view-only; input is done via adb) ---------------------
 export ANDROID_SERIAL="emulator-5554"
+export PORT="$SCREEN_PORT"
+export ADB="adb"
+export SCRCPY_SERVER=/opt/scrcpy-server.jar
+echo "android: starting screen bridge on :${SCREEN_PORT}"
+node /opt/bridge/server.js >/tmp/bridge.log 2>&1 &
+BRIDGE_PID=$!
+
+cleanup() {
+  kill "${WORKER_PID:-}" "$BRIDGE_PID" "$EMU_PID" 2>/dev/null || true
+}
+trap cleanup TERM INT
 
 echo "android: starting easyworker on :${WORKER_PORT:-48080}"
 easyworker &
