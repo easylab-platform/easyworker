@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Build and push the easyworker Android (emulator) sandbox image.
 #
-#   ./images/android/build.sh
+#   ./images/android/build.sh [aosp|gms]        # default: aosp
+#   FLAVOR=gms TAG=v1.2.0-gms ./images/android/build.sh
 #
-# The image carries an Android build toolchain (JDK 21, Gradle, Android SDK)
-# plus the official Android emulator and an Android 35 system image, so one job
-# can build an APK and install/run it in the KVM-accelerated guest. The screen
-# is shared over noVNC (see entrypoint.sh).
+# RUN-ONLY: the image ships the official Android emulator, a system image, adb
+# and the screen bridge — no JDK/Gradle/build-tools/cmdline-tools. Build the
+# APK elsewhere, push it with FileWrite, install it with adb.
+#
+# Flavors (one Containerfile, SYSTEM_IMAGE picks the guest):
+#   aosp -> system-images;android-35;default;x86_64       (no GMS)
+#   gms  -> system-images;android-35;google_apis;x86_64   (GMS, no Play Store)
 #
 # Prerequisites:
 #   * dist/easyworker-linux-amd64    (scripts/build-all.sh)
@@ -14,18 +18,25 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${DIR}/../.." && pwd)"
 
-REGISTRY="${REGISTRY:-forgejo.develop.10.199.64.20.nip.io}"
+FLAVOR="${1:-${FLAVOR:-aosp}}"
+case "$FLAVOR" in
+  aosp) SYSTEM_IMAGE="system-images;android-35;default;x86_64" ;;
+  gms)  SYSTEM_IMAGE="system-images;android-35;google_apis;x86_64" ;;
+  *) echo "unknown flavor '$FLAVOR' (want aosp|gms)" >&2; exit 2 ;;
+esac
+
+REGISTRY="${REGISTRY:-git.agent.svc.cluster.local}"
 NAMESPACE="${NAMESPACE:-root}"
 NAME="${NAME:-easyworker-android}"
-TAG="${TAG:-v1.1.0}"
+TAG="${TAG:-v1.2.0-$FLAVOR}"
 DEST="${REGISTRY}/${NAMESPACE}/${NAME}:${TAG}"
-BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"
+BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.agent.svc.cluster.local:1234}"
 PROXY="${PROXY:-http://mihomo.develop.svc.cluster.local:7890}"
 WORKER_BIN="${WORKER_BIN:-${ROOT}/dist/easyworker-linux-amd64}"
 
-for f in "${DIR}/Dockerfile" "${DIR}/entrypoint.sh" \
+for f in "${DIR}/Containerfile" "${DIR}/entrypoint.sh" \
          "${DIR}/bridge/server.js" "${DIR}/bridge/index.html" "${DIR}/bridge/jmuxer.min.js" \
-         "${DIR}/sdk-init.gradle" "${WORKER_BIN}"; do
+         "${WORKER_BIN}"; do
   [ -e "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
 
@@ -33,18 +44,21 @@ BUILDCTL="${BUILDCTL:-$(command -v buildctl || echo /opt/tools/mise/installs/aqu
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
-cp "${DIR}/Dockerfile" "${DIR}/entrypoint.sh" "${DIR}/sdk-init.gradle" "${WORK}/"
+cp "${DIR}/Containerfile" "${WORK}/Dockerfile"
+cp "${DIR}/entrypoint.sh" "${WORK}/"
 mkdir -p "${WORK}/bridge"
 cp "${DIR}/bridge/server.js" "${DIR}/bridge/index.html" "${DIR}/bridge/jmuxer.min.js" "${WORK}/bridge/"
 cp "${WORKER_BIN}" "${WORK}/easyworker"
 
-echo "Building ${NAME} -> ${DEST} (buildkitd=${BUILDKIT})"
+echo "Building ${NAME}:${TAG} (flavor=${FLAVOR}, buildkitd=${BUILDKIT})"
+echo "  system image: ${SYSTEM_IMAGE}"
 "${BUILDCTL}" --addr "${BUILDKIT}" build \
   --frontend dockerfile.v0 \
   --local "context=${WORK}" \
   --local "dockerfile=${WORK}" \
   --opt "filename=Dockerfile" \
   --opt "build-arg:REGISTRY=${REGISTRY}/root" \
+  --opt "build-arg:SYSTEM_IMAGE=${SYSTEM_IMAGE}" \
   --opt "build-arg:HTTP_PROXY=${PROXY}" \
   --opt "build-arg:HTTPS_PROXY=${PROXY}" \
   --output "type=oci,dest=${WORK}/image.oci,compression=zstd" \

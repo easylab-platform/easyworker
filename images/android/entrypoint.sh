@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# easyworker Android sandbox entrypoint.
+# easyworker Android sandbox entrypoint (run-only, non-persistent).
 #
-#   emulator -no-window  ->  scrcpy-server  ->  bridge (WebSocket)  -> browser
+#   emulator -no-window -wipe-data  ->  scrcpy-server  ->  bridge  -> browser
 #   adb -> emulator-5554 (used by easyworker jobs)
 #   easyworker :48080
 #
-# The AVD is created on first start from the packaged system image; its
-# userdata lives on /data so it survives a container restart.
+# The AVD is pre-built into the image. The guest is NOT persistent: the
+# emulator always starts with -wipe-data, so every container start is a clean
+# device (nothing survives a restart).
 
-STORAGE=/data
 AVD="${ANDROID_AVD:-sandbox}"
 MEM="${ANDROID_MEM:-4096}"
 CPUS="${ANDROID_CPUS:-4}"
@@ -19,24 +19,15 @@ SCREEN_PORT="${SCREEN_PORT:-6080}"
 
 export ANDROID_SDK_ROOT=/opt/android-sdk
 export ANDROID_HOME=/opt/android-sdk
-export ANDROID_AVD_HOME=/data/avd
+export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-/opt/android-avd}"
 export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/emulator:${PATH}"
 
-mkdir -p "$STORAGE" "$ANDROID_AVD_HOME" /workspace
+mkdir -p /workspace
 
-# --- disposable AVD -------------------------------------------------------
-if [ ! -d "$ANDROID_AVD_HOME/${AVD}.avd" ]; then
-  echo "android: creating AVD '${AVD}'"
-  echo no | avdmanager create avd -n "$AVD" -k "system-images;android-35;google_apis;x86_64" \
-    -d pixel_6 --force
-  sed -i 's/^showDeviceFrame = yes/showDeviceFrame = no/' \
-    "$ANDROID_AVD_HOME/${AVD}.avd/config.ini" || true
-fi
-
-# --- emulator (headless) --------------------------------------------------
-echo "android: starting emulator (kvm, ${CPUS} vCPU, ${MEM} MB, gpu=${GPU})"
+# --- emulator (headless, fresh data every boot) ---------------------------
+echo "android: starting emulator (kvm, ${CPUS} vCPU, ${MEM} MB, gpu=${GPU}, wipe-data)"
 emulator -avd "$AVD" \
-  -no-window -no-audio -no-boot-anim -no-snapshot \
+  -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
   -gpu "$GPU" -accel on \
   -memory "$MEM" -cores "$CPUS" \
   -port 5554 \

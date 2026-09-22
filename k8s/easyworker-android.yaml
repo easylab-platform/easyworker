@@ -1,14 +1,24 @@
-# easyworker Android sandbox — the official Android Emulator plus an Android
-# build toolchain, all in ONE container.
+# easyworker Android sandbox — RUN-ONLY: the official Android Emulator, a
+# system image, adb and the browser screen bridge. No build toolchain.
 #
-# A job can `gradle assembleDebug`, `adb install` and `am start` in one place:
-# the worker (host side) drives the KVM-accelerated emulator over adb. The
-# emulator runs headless and its screen is relayed to a browser by a small
-# bridge (scrcpy-server H.264 -> WebSocket -> MSE/jMuxer); no X server, no VNC.
+# APKs are built OUTSIDE the sandbox and pushed in over the worker API, then
+# installed with adb — the worker (host side) drives the KVM-accelerated
+# emulator. The emulator runs headless and its screen is relayed to a browser
+# by a small bridge (scrcpy-server H.264 -> WebSocket -> MSE/jMuxer); no X
+# server, no VNC.
+#
+#   FileWrite  app.apk                    (external x86_64 or pure-Java APK)
+#   Execute    adb -s emulator-5554 install -r app.apk
+#   Execute    adb -s emulator-5554 shell am start -n <pkg>/.MainActivity
 #
 # The screen is view-only. To drive the device, run adb through the worker API:
 #   adb -s emulator-5554 shell input tap 540 1200
 #   adb -s emulator-5554 shell input text hello
+#
+# Two flavors (see readme): v1.2.0-aosp (no GMS) and v1.2.0-gms (GMS, no Play).
+#
+# The guest is NOT persistent: the emulator always boots with -wipe-data, so
+# every container start is a clean device (nothing survives a restart).
 #
 # privileged: false — KVM comes from the squat.ai/kvm device plugin, exactly
 # like the Windows/macOS VM workers.
@@ -44,7 +54,8 @@ spec:
         - name: <registry-credentials>
       containers:
         - name: android
-          image: <registry>/easyworker-android:v1.1.0
+          # v1.2.0-aosp: no GMS.  Use v1.2.0-gms for Google APIs (no Play Store).
+          image: <registry>/easyworker-android:v1.2.0-aosp
           imagePullPolicy: IfNotPresent
 
           # Optional: run on a host GPU. Requires the NVIDIA container runtime
@@ -71,9 +82,8 @@ spec:
             - { name: WORKER_TOKEN, value: "" }
             - { name: WORKER_PORT, value: "48080" }
             - { name: WORKER_WORKSPACE, value: "/workspace" }
-            - { name: WORKER_DB, value: "/data/jobs.db" }
-            # Guest sizing (the container also carries the build toolchain, so
-            # leave headroom above the guest's own allocation).
+            - { name: WORKER_DB, value: "/tmp/easyworker/jobs.db" }
+            # Guest sizing.
             - { name: ANDROID_MEM, value: "4096" }
             - { name: ANDROID_CPUS, value: "4" }
             # swiftshader_indirect (default) | host (needs runtimeClassName nvidia)
@@ -98,14 +108,9 @@ spec:
 
           volumeMounts:
             - { mountPath: /dev/net/tun, name: devtun }
-            - { mountPath: /data, name: data }
       volumes:
         - name: devtun
           hostPath: { path: /dev/net/tun, type: CharDevice }
-        # The AVD's userdata; keep it so a restart does not wipe the guest.
-        # Use emptyDir{} for a fully ephemeral guest.
-        - name: data
-          emptyDir: {}
 ---
 # Worker Connect API (WorkerService + WorkerEnroll).
 apiVersion: v1

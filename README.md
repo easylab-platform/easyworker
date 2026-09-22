@@ -391,12 +391,12 @@ Alternatives considered:
   `ResourceSlice`/`DeviceClass` is cluster-scoped and returns `403`. DRA would
   require cluster-admin RBAC, so the device plugin is the pragmatic choice.
 
-## Android sandbox (toolchain + official emulator + browser screen)
+## Android sandbox (official emulator + browser screen, run-only)
 
-`images/android/` is a self-contained Android **development** sandbox: the
-container carries the build toolchain **and** the official Android Emulator with
-an Android 35 (Google APIs, x86_64) system image, so a single job can build an
-APK and immediately install/run it in the guest.
+`images/android/` is a **run-only** Android sandbox: the official Android
+Emulator, an Android 35 (x86_64) system image, `adb` and the browser screen
+bridge — and nothing else. Build the APK on the outside, push it in over the
+worker API, install it with `adb`:
 
 ```
 :48080  Worker API  (WorkerService + WorkerEnroll)   host side
@@ -404,11 +404,25 @@ APK and immediately install/run it in the guest.
 :5555   emulator adbd (internal; used by adb/jobs)
 ```
 
-Toolchain baked in: **JDK 21**, **Gradle 8.13**, **Android SDK**
-(`platform-tools`, `emulator`, `platforms;android-35`, `build-tools;35.0.0`,
-`system-images;android-35;google_apis;x86_64`), plus `nodejs`/`node-ws` for the
-screen bridge. `privileged: false`; KVM comes from the device plugin, same as
-the other VM workers.
+Two flavors of the same image (one `Containerfile`, `SYSTEM_IMAGE` picks the
+guest):
+
+| tag | system image | notes |
+|---|---|---|
+| `easyworker-android:v1.2.0-aosp` | `system-images;android-35;default;x86_64` | no GMS, smaller |
+| `easyworker-android:v1.2.0-gms`  | `system-images;android-35;google_apis;x86_64` | Google APIs, no Play Store |
+
+There is deliberately **no build toolchain** — no JDK, no Gradle, no
+`build-tools`, no `cmdline-tools`. `gradle assembleDebug` belongs to the build
+host, not the sandbox; it only exists to produce the APK you upload. The AVD is
+pre-created at build time in a throwaway stage, so `cmdline-tools` never reaches
+the shipped image. `privileged: false`; KVM comes from the device plugin, same
+as the other VM workers.
+
+**The guest is not persistent.** The emulator always starts with `-wipe-data`,
+so every container start is a clean device: an installed APK is gone after a
+restart. (`/workspace` is where uploads land and also does not survive a pod
+recreation unless you mount it.)
 
 ### Screen: headless emulator, no X, no VNC
 
@@ -428,6 +442,22 @@ emulator -no-window
 `xvfb`, no `x11vnc` and no noVNC. The bridge is view-only — the player is a
 plain `<video>` fed by jMuxer, which is the reason it works over a plain HTTP
 origin (WebCodecs would require a secure context).
+
+### Build elsewhere, upload, install
+
+The whole loop is the worker API; no toolchain is needed in the sandbox:
+
+```
+FileWrite  path=/workspace/app.apk  content=<the APK bytes>   # binary-safe
+Execute    adb -s emulator-5554 install -r app.apk
+Execute    adb -s emulator-5554 shell am start -n <pkg>/.MainActivity
+Execute    adb -s emulator-5554 shell uiautomator dump /sdcard/u.xml
+```
+
+`FileWrite` carries the bytes as a protobuf `bytes` field and the worker sets no
+message-size limit, so a normal APK (tens of MB) uploads in one call. For very
+large artifacts, fetch them inside the job instead (e.g. `curl` from the
+in-cluster artifact service).
 
 ### Input: adb through the worker API
 
@@ -449,35 +479,28 @@ working on this cluster's A800 nodes; without the GPU the same image falls back
 to software.
 
 The worker runs on the host side (Android cannot run the linux/amd64 Go worker)
-and drives the guest over `adb`. Because the worker's job environment is a strict
-allowlist (only `PATH`/`HOME`/`TMPDIR`/`USER` and proxies survive), `ANDROID_HOME`
-never reaches a job — the image ships a global Gradle init script that writes
-`sdk.dir` into `local.properties`, so plain `gradle assembleDebug` works in jobs.
+and drives the guest over `adb`. `PATH` is on the worker's job-env allowlist, so
+jobs inherit `adb`/`emulator`; nothing else from the SDK environment is needed.
 
 ```sh
 scripts/build-all.sh                        # dist/ worker binaries
-./images/android/build.sh                   # -> <registry>/easyworker-android:v1.1.0
+./images/android/build.sh aosp              # -> .../easyworker-android:v1.2.0-aosp
+./images/android/build.sh gms               # -> .../easyworker-android:v1.2.0-gms
 kubectl apply -f k8s/easyworker-android.yaml
 ```
 
-The AVD is created on first start and its userdata lives on `/data` (an
-`emptyDir` in the manifest, so each pod starts clean; swap for a PVC to persist).
-
-One job, full loop (verified end to end):
-
-```
-gradle --no-daemon assembleDebug            # builds app-debug.apk in the container
-adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s emulator-5554 shell wm dismiss-keyguard
-adb -s emulator-5554 shell am start -n <pkg>/.MainActivity
-adb -s emulator-5554 shell uiautomator dump /sdcard/u.xml    # assert the UI rendered
-```
+Verified end to end on a `privileged: false` pod, both flavors: emulator boots
+to `sys.boot_completed=1`, the bridge is live (`:6080` serves H.264; a real
+Chrome decodes 486×1080 with `currentTime` advancing), an x86_64 APK is uploaded
+with `FileWrite`, `adb install -r` succeeds, `am start` launches it, and the
+process is running (`pidof`). Restarting the pod leaves the app absent — the
+`-wipe-data` guest really is clean.
 
 Notes:
 
-- **APKs must be x86_64** — this system image has no ARM translation layer.
-- `ANDROID_MEM`/`ANDROID_CPUS` size the guest only; size the pod's requests above
-  that so the toolchain has room too.
+- **APKs must be x86_64 or have no native libs** — this system image has no ARM
+  translation layer. A pure-Java/Kotlin APK installs on any image.
+- `ANDROID_MEM`/`ANDROID_CPUS` size the guest only.
 
 ## Multi-platform (windows / macos host-run)
 

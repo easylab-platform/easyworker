@@ -1,0 +1,141 @@
+# easyworker Android sandbox — RUN-ONLY: the official Android Emulator, a
+# system image, adb, and the browser screen bridge. No build toolchain.
+#
+# APKs are built OUTSIDE the sandbox and pushed in over the worker API, then
+# installed with adb:
+#
+#   FileWrite  /workspace/app.apk        (external, x86_64 or pure-Java APK)
+#   Execute    adb -s emulator-5554 install -r app.apk
+#   Execute    adb -s emulator-5554 shell am start -n <pkg>/.MainActivity
+#
+# So this image ships neither the JDK nor Gradle nor build-tools nor
+# cmdline-tools: `gradle assembleDebug` belongs to the build host, not here.
+#
+# Two flavors, one Containerfile (SYSTEM_IMAGE picks the guest):
+#   aosp -> system-images;android-35;default;x86_64        (~746 MB, no GMS)
+#   gms  -> system-images;android-35;google_apis;x86_64    (~1.6 GB, GMS, no Play)
+#
+# The AVD is pre-created at build time (stage 1), so cmdline-tools is not
+# shipped. The guest is NOT persistent: the emulator always boots with
+# -wipe-data, so every container start is a clean device.
+#
+# Screen (view-only):
+#   emulator -no-window  ->  scrcpy-server  ->  bridge/server.js  ->  MSE player
+# There is no input endpoint; drive the device with adb through the worker API.
+#
+# Endpoints: :48080 worker, :6080 screen, :5555 emulator adbd (internal).
+ARG REGISTRY=git.agent.svc.cluster.local/root
+ARG SYSTEM_IMAGE=system-images;android-35;default;x86_64
+
+# ==========================================================================
+# Stage 1: fetch the SDK pieces and pre-create the AVD. Discarded afterwards,
+# so the JDK + cmdline-tools used here never reach the final image.
+# ==========================================================================
+FROM ${REGISTRY}/debian:trixie-slim AS sdk
+
+ARG HTTP_PROXY=http://mihomo.develop.svc.cluster.local:7890
+ARG HTTPS_PROXY=http://mihomo.develop.svc.cluster.local:7890
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=localhost,127.0.0.1,.svc.cluster.local,.svc,.nip.io,10.199.64.20 \
+    DEBIAN_FRONTEND=noninteractive
+ARG CMDLINE_TOOLS=commandlinetools-linux-11076708_latest.zip
+ARG SCRCPY_VERSION=4.1
+ARG SYSTEM_IMAGE
+
+RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
+    && sed -i 's|http://deb.debian.org/debian|http://mirrors.aliyun.com/debian|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+         curl unzip openjdk-21-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_AVD_HOME=/opt/android-avd
+
+RUN mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools" \
+    && curl -sSL -o /tmp/cmdtools.zip \
+         "https://dl.google.com/android/repository/${CMDLINE_TOOLS}" \
+    && unzip -q /tmp/cmdtools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools" \
+    && rm -f /tmp/cmdtools.zip \
+    && mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest" \
+    && yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+
+# Only the run-time packages: adb, the emulator, and the guest system image.
+RUN "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+      "platform-tools" "emulator" "${SYSTEM_IMAGE}" \
+    && rm -rf /tmp/* /var/tmp/*
+
+# Pre-create the AVD once, at build time (this is the only thing that needed
+# cmdline-tools at run time before). avdmanager only honors ANDROID_AVD_HOME
+# when the directory already exists, hence the mkdir.
+RUN mkdir -p "$ANDROID_AVD_HOME" \
+    && echo no | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" \
+         create avd -n sandbox -k "${SYSTEM_IMAGE}" -d pixel_6 --force \
+    && sed -i 's/^showDeviceFrame = yes/showDeviceFrame = no/' \
+         "$ANDROID_AVD_HOME/sandbox.avd/config.ini"
+
+# The on-device screen encoder (only the jar; no scrcpy client).
+RUN curl -sSL -o /opt/scrcpy-server.jar \
+      "https://github.com/Genymobile/scrcpy/releases/download/v${SCRCPY_VERSION}/scrcpy-server-v${SCRCPY_VERSION}"
+
+# ==========================================================================
+# Stage 2: the runtime image.
+# ==========================================================================
+FROM ${REGISTRY}/debian:trixie-slim
+
+ARG HTTP_PROXY=http://mihomo.develop.svc.cluster.local:7890
+ARG HTTPS_PROXY=http://mihomo.develop.svc.cluster.local:7890
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=localhost,127.0.0.1,.svc.cluster.local,.svc,.nip.io,10.199.64.20 \
+    DEBIAN_FRONTEND=noninteractive
+
+# nodejs + node-ws: the screen bridge.  lib*: the emulator still links
+# libX11/libxcb even headless.  No X server, no VNC, no JDK/Gradle.
+RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
+    && sed -i 's|http://deb.debian.org/debian|http://mirrors.aliyun.com/debian|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+         tini ca-certificates curl unzip xz-utils zip procps \
+         nodejs node-ws \
+         libx11-6 libx11-xcb1 libxcb1 libxau6 libxdmcp6 libbsd0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# SDK pieces + the pre-built AVD, copied from stage 1.
+COPY --from=sdk /opt/android-sdk/platform-tools /opt/android-sdk/platform-tools
+COPY --from=sdk /opt/android-sdk/emulator      /opt/android-sdk/emulator
+COPY --from=sdk /opt/android-sdk/system-images /opt/android-sdk/system-images
+COPY --from=sdk /opt/android-avd               /opt/android-avd
+COPY --from=sdk /opt/scrcpy-server.jar         /opt/scrcpy-server.jar
+
+ENV ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_AVD_HOME=/opt/android-avd
+# PATH is on the worker's job-env allowlist, so jobs inherit adb/emulator.
+ENV PATH=/opt/android-sdk/platform-tools:/opt/android-sdk/emulator:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# --- easyworker (host side) ----------------------------------------------
+COPY --chmod=755 ./easyworker /usr/local/bin/easyworker
+
+# --- screen bridge --------------------------------------------------------
+COPY --chmod=755 ./bridge/server.js   /opt/bridge/server.js
+COPY --chmod=644 ./bridge/index.html  /opt/bridge/index.html
+COPY --chmod=644 ./bridge/jmuxer.min.js /opt/bridge/jmuxer.min.js
+
+COPY --chmod=755 ./entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN mkdir -p /workspace
+
+ENV WORKER_PORT=48080 \
+    WORKER_WORKSPACE=/workspace \
+    WORKER_DB=/tmp/easyworker/jobs.db \
+    ANDROID_MEM=4096 \
+    ANDROID_CPUS=4 \
+    ANDROID_AVD=sandbox \
+    ANDROID_GPU=swiftshader_indirect \
+    SCREEN_PORT=6080 \
+    SCRCPY_VERSION=4.1
+
+EXPOSE 48080 6080 5555
+ENTRYPOINT ["/usr/bin/tini", "-s", "/usr/local/bin/entrypoint.sh"]
